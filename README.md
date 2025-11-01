@@ -1,18 +1,32 @@
 # 🎬 AI YouTube Automation
 
-**AI YouTube Automation** is a Python-based system designed to **automate AI-generated YouTube video creation and uploading**.  
+**AI YouTube Automation** is a Python-based system designed to **automate AI-generated YouTube video creation and uploading**.
 It streamlines the process of generating ideas, scripts, voiceovers, visuals, and uploads — saving time while maintaining creativity and quality.
+
+---
+
+## 📚 Table of Contents
+
+* [🚀 Features](#-features)
+* [🧱 Project Structure](#-project-structure)
+* [⚙️ Installation & Setup](#️-installation--setup)
+* [🧠 Environment Configuration](#-environment-configuration)
+* [▶️ Usage](#️-usage)
+* [🧩 Future Scope](#-future-scope)
+* [🤝 Contributing](#-contributing)
+* [📜 License](#-license)
+* [💡 Author](#-author)
 
 ---
 
 ## 🚀 Features
 
-- 🤖 **AI Script Generation** – Auto-generate creative video scripts.
-- 🗣️ **AI Voiceover Integration** – Generate realistic voices via ElevenLabs or other TTS APIs.
-- 🎥 **Video Generation Support** – Integrate with tools like Kaiber AI or Runway.
-- 🧠 **Workflow Automation** – Automate video creation and publishing to YouTube.
-- 🧩 **Modular Architecture** – Organized structure for scalability and maintenance.
-- 📡 **FastAPI Backend** – Provides REST APIs for controlling workflows and status updates.
+* 🤖 **AI Script Generation** – Auto-generate creative and engaging video scripts.
+* 🗣️ **AI Voiceover Integration** – Generate realistic voiceovers using **ElevenLabs** or other TTS APIs.
+* 🎥 **Video Generation Support** – Seamlessly integrate with AI tools like **Kaiber AI** or **Runway**.
+* 🧠 **Workflow Automation** – End-to-end automation for creating and publishing YouTube videos.
+* 🧩 **Modular Architecture** – Clean, scalable project structure for maintainability.
+* 📡 **FastAPI Backend** – RESTful API endpoints for managing workflows and status updates.
 
 ---
 
@@ -22,21 +36,21 @@ It streamlines the process of generating ideas, scripts, voiceovers, visuals, an
 ai_youtube_automation/
 │
 ├── app/
-│ ├── core/ # Core configurations (DB, API setup, constants)
-│ ├── services/ # Core automation logic (script, voice, video)
-│ ├── routes/ # FastAPI routes
-│ ├── utils/ # Helper modules
-│ ├── tests/ # Unit tests
-│ ├── init.py
-│ └── main.py # FastAPI entry point
+│   ├── core/          # Core configurations (DB, API setup, constants)
+│   ├── services/      # Core automation logic (script, voice, video)
+│   ├── routes/        # FastAPI routes
+│   ├── utils/         # Helper modules
+│   ├── tests/         # Unit tests
+│   ├── __init__.py
+│   └── main.py        # FastAPI entry point
 │
-├── assets/ # Placeholder for input/output files
-├── output/ # Generated video outputs
+├── assets/            # Placeholder for input/output files
+├── output/            # Generated video outputs
 ├── setup_structure.py # Script to generate folder structure
-├── requirements.txt # Python dependencies
-├── .env # Environment variables (ignored in Git)
-├── .gitignore # Git ignore configuration
-└── README.md # Project documentation
+├── requirements.txt   # Python dependencies
+├── .env               # Environment variables (ignored in Git)
+├── .gitignore         # Git ignore configuration
+└── README.md          # Project documentation
 ```
 
 ---
@@ -44,26 +58,37 @@ ai_youtube_automation/
 ## ⚙️ Installation & Setup
 
 ### 1️⃣ Clone the Repository
+
 ```bash
-git clone https://github.com/YOUR_USERNAME/ai-yt.git
+git clone https://github.com/Pavank2983/ai-yt.git
 cd ai-yt
 ```
 
-### 2️⃣ Create Virtual Environment
+### 2️⃣ Create a Virtual Environment
 
-```
+```bash
 python -m venv venv
-venv\Scripts\activate   # For Windows
-source venv/bin/activate   # For Linux/Mac
+```
+
+Activate it:
+
+```bash
+# Windows
+venv\Scripts\activate
+
+# macOS/Linux
+source venv/bin/activate
 ```
 
 ### 3️⃣ Install Dependencies
 
-```
+```bash
 pip install -r requirements.txt
 ```
 
 ### 4️⃣ Configure Environment Variables
+
+Create a `.env` file in the project root with the following structure:
 
 ```
 # Database configuration
@@ -84,38 +109,60 @@ YOUTUBE_API_KEY=
 OPENAI_API_KEY=
 ```
 
-### 5️⃣ Run the App
+---
 
-```
+## ▶️ Usage
+
+Run the FastAPI app:
+
+```bash
 uvicorn app.main:app --reload
 ```
 
-Then open in browser:
-👉 http://127.0.0.1:8000
+Then open your browser and navigate to:
+👉 [http://127.0.0.1:8000](http://127.0.0.1:8000)
 
-🧠 Future Scope
+---
 
-Full AI workflow orchestration (Script → Voice → Video → Upload)
-Advanced analytics dashboard
-Integration with multiple TTS/AI video APIs
-Automatic thumbnail generation
+## 🧠 Future Scope
 
-🤝 Contributing
+* End-to-end AI workflow orchestration (Script → Voice → Video → Upload)
+* Advanced analytics dashboard
+* Integration with multiple AI tools (TTS, video generation, thumbnail creation)
+* Smart title/description/SEO generation for YouTube uploads
 
-Pull requests are welcome! Please ensure code readability and follow the project structure guidelines.
+---
 
-📜 License
+## 🤝 Contributing
 
-This project is licensed under the MIT License – you are free to modify and use it commercially with attribution.
+Contributions are welcome! 🎉
+To contribute:
 
-💡 Author
+1. Fork the repository
+2. Create a new branch (`feature/your-feature-name`)
+3. Commit your changes
+4. Submit a Pull Request
 
-Pavan Kumar HV
+Please ensure code readability and follow the existing project structure.
 
-🚀 GitHub: @Pavank2983
+---
 
-### Youtube credentials
+## 📜 License
 
-##### EMAIL - `makeone.aihub@gmail.com`
-##### PASSWORD - `NJh1SBEFB4fIgL3i`
+This project is licensed under the **MIT License**.
+You are free to modify and use it commercially with proper attribution.
 
+---
+
+## 💡 Author
+
+**Pavan Kumar HV**
+🚀 [GitHub: @Pavank2983](https://github.com/Pavank2983)
+
+---
+
+> ⚠️ **Security Notice:**
+> For safety, do **not** share YouTube credentials (`EMAIL` or `PASSWORD`) in public repositories or documentation.
+> Store them securely in your `.env` file or a password manager.
+
+---
