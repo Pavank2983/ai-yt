@@ -160,9 +160,3 @@ You are free to modify and use it commercially with proper attribution.
 🚀 [GitHub: @Pavank2983](https://github.com/Pavank2983)
 
 ---
-
-> ⚠️ **Security Notice:**
-> For safety, do **not** share YouTube credentials (`EMAIL` or `PASSWORD`) in public repositories or documentation.
-> Store them securely in your `.env` file or a password manager.
-
----
