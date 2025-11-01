@@ -114,3 +114,8 @@ Pavan Kumar HV
 
 🚀 GitHub: @Pavank2983
 
+### Youtube credentials
+
+##### EMAIL - `makeone.aihub@gmail.com`
+##### PASSWORD - `NJh1SBEFB4fIgL3i`
+
