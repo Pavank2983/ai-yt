@@ -126,9 +126,6 @@ Then open your browser and navigate to:
 
 ## 🔑 YouTube Credentials
 
-> **Note:** These credentials are for internal/private repository use only.
-> Do not share them publicly or commit to public repositories.
-
 | Field        | Value                     |
 | ------------ | ------------------------- |
 | **Email**    | `makeone.aihub@gmail.com` |
