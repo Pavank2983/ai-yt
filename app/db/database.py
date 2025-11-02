@@ -1,19 +1,26 @@
-import mysql.connector
-from mysql.connector import Error
-from app.config.settings import settings
+from sqlalchemy import create_engine
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
+from app.config.settings import settings  # ✅ Ensure correct import path
 
-def get_connection():
+# ✅ Create the SQLAlchemy engine
+DATABASE_URL = (
+    f"mysql+mysqlconnector://{settings.DB_USER}:{settings.DB_PASSWORD}"
+    f"@{settings.DB_HOST}:{settings.DB_PORT}/{settings.DB_NAME}"
+)
+
+engine = create_engine(DATABASE_URL, pool_pre_ping=True)
+
+# ✅ Create session
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+# ✅ Base class for all models
+Base = declarative_base()
+
+def get_db():
+    """Dependency for FastAPI routes."""
+    db = SessionLocal()
     try:
-        connection = mysql.connector.connect(
-            host=settings.DB_HOST,
-            user=settings.DB_USER,
-            password=settings.DB_PASSWORD,
-            database=settings.DB_NAME,
-            port=settings.DB_PORT
-        )
-        if connection.is_connected():
-            print("✅ MySQL Database connected successfully!")
-            return connection
-    except Error as e:
-        print(f"❌ Error connecting to MySQL: {e}")
-        return None
+        yield db
+    finally:
+        db.close()
