@@ -8,6 +8,9 @@ folders = [
     "app/db",
     "app/config",
     "app/scheduler",
+    "app/models",
+    "app/schemas",
+    "app/core",
     "assets/music",
     "assets/voices",
     "assets/images",
@@ -20,6 +23,14 @@ folders = [
 
 # ✅ Files to initialize
 files = [
+    # Root
+    "main.py",
+    "run.py",
+    ".env",
+    "requirements.txt",
+    ".gitignore",
+
+    # Init files
     "app/__init__.py",
     "app/routes/__init__.py",
     "app/services/__init__.py",
@@ -27,23 +38,39 @@ files = [
     "app/db/__init__.py",
     "app/config/__init__.py",
     "app/scheduler/__init__.py",
-    "app/db/models.py",
+    "app/models/__init__.py",
+    "app/schemas/__init__.py",
+
+    # DB & Config
     "app/db/database.py",
+    "app/db/init_db.py",
+    "app/config/settings.py",
+
+    # Utilities
     "app/utils/logger.py",
     "app/utils/file_handler.py",
     "app/utils/decorators.py",
+
+    # Services
     "app/services/script_generator.py",
     "app/services/voice_generator.py",
     "app/services/video_generator.py",
     "app/services/video_editor.py",
+
+    # Scheduler
     "app/scheduler/daily_job.py",
-    "app/config/settings.py",
-    "main.py",
-    "config.py",
-    ".env",
-    "requirements.txt",
-    ".gitignore"
 ]
+
+# ✅ Auto-create base model, schema, route, and service files
+modules = ["analytic", "api_usage", "automation_log", "category", "job", "notification", "platform", "script", "user", "video_issue", "video", "webhook"]
+
+for module in modules:
+    files.extend([
+        f"app/models/{module}.py",
+        f"app/schemas/{module}.py",
+        f"app/services/{module}_service.py",
+        f"app/routes/{'categorie' if module == 'category' else module}s.py" # plural routes (users.py, videos.py)
+    ])
 
 # ✅ Default .gitignore content
 gitignore_content = """# Virtual environment
@@ -61,7 +88,9 @@ __pycache__/
 
 # Output folders
 output/
-assets/
+assets/music/
+assets/voices/
+assets/images/
 """
 
 # ✅ Create folders

@@ -96,7 +96,7 @@ DB_AI_YT_HOST=localhost
 DB_AI_YT_PORT=3306
 DB_AI_YT_USER=ai_user
 DB_AI_YT_PASSWORD=your_password
-DB_AI_YT_NAME=ai_youtube_db
+DB_AI_YT_NAME=aiyt_db
 
 # App configuration
 APP_NAME=AI YouTube Automation

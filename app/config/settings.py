@@ -10,7 +10,7 @@ class Settings:
     DB_PORT = int(os.getenv("DB_AI_YT_PORT", 3306))
     DB_USER = os.getenv("DB_AI_YT_USER", "root")
     DB_PASSWORD = os.getenv("DB_AI_YT_PASSWORD", "")
-    DB_NAME = os.getenv("DB_AI_YT_NAME", "ai_youtube_db")
+    DB_NAME = os.getenv("DB_AI_YT_NAME", "aiyt_db")
 
     # App Info
     APP_NAME = os.getenv("APP_NAME", "AI YouTube Automation")
