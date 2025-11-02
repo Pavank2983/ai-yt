@@ -35,7 +35,7 @@ files = [
     "app/routes/__init__.py",
     "app/services/__init__.py",
     "app/utils/__init__.py",
-    "app/db/__init__.py",
+    # "app/db/__init__.py",
     "app/config/__init__.py",
     "app/scheduler/__init__.py",
     "app/models/__init__.py",
