@@ -59,6 +59,18 @@ files = [
 
     # Scheduler
     "app/scheduler/daily_job.py",
+    
+    # Authentication
+    "app/core/security.py",
+    "app/schemas/auth_schema.py",
+    "app/services/auth_service.py",
+    "app/routes/auth_route.py",
+    
+    # Unit tests
+    "tests/__init__.py",
+    "tests/test_auth.py",
+    "tests/test_security.py",
+    "tests/test_db.py",
 ]
 
 # ✅ Auto-create base model, schema, route, and service files
