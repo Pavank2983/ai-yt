@@ -35,22 +35,101 @@ It streamlines the process of generating ideas, scripts, voiceovers, visuals, an
 ```
 ai_youtube_automation/
 │
-├── app/
-│   ├── core/          # Core configurations (DB, API setup, constants)
-│   ├── services/      # Core automation logic (script, voice, video)
-│   ├── routes/        # FastAPI routes
-│   ├── utils/         # Helper modules
-│   ├── tests/         # Unit tests
-│   ├── __init__.py
-│   └── main.py        # FastAPI entry point
-│
-├── assets/            # Placeholder for input/output files
-├── output/            # Generated video outputs
-├── setup_structure.py # Script to generate folder structure
-├── requirements.txt   # Python dependencies
-├── .env               # Environment variables (ignored in Git)
-├── .gitignore         # Git ignore configuration
-└── README.md          # Project documentation
+app/
+    ├── config/
+        ├── __init__.py
+        └── settings.py
+    ├── core/
+        └── security.py
+    ├── db/
+        ├── database.py
+        └── init_db.py
+    ├── models/
+        ├── __init__.py
+        ├── analytic.py
+        ├── api_usage.py
+        ├── automation_log.py
+        ├── category.py
+        ├── job.py
+        ├── notification.py
+        ├── platform.py
+        ├── script.py
+        ├── user.py
+        ├── video_issue.py
+        ├── video.py
+        └── webhook.py
+    ├── routes/
+        ├── __init__.py
+        ├── analytics.py
+        ├── api_usages.py
+        ├── auth_route.py
+        ├── automation_logs.py
+        ├── categories.py
+        ├── jobs.py
+        ├── notifications.py
+        ├── platforms.py
+        ├── scripts.py
+        ├── users.py
+        ├── video_issues.py
+        ├── videos.py
+        └── webhooks.py
+    ├── scheduler/
+        ├── __init__.py
+        └── daily_job.py
+    ├── schemas/
+        ├── __init__.py
+        ├── analytic.py
+        ├── api_usage.py
+        ├── auth_schema.py
+        ├── automation_log.py
+        ├── category.py
+        ├── job.py
+        ├── notification.py
+        ├── platform.py
+        ├── script.py
+        ├── user.py
+        ├── video_issue.py
+        ├── video.py
+        └── webhook.py
+    ├── services/
+        ├── __init__.py
+        ├── analytic_service.py
+        ├── api_usage_service.py
+        ├── auth_service.py
+        ├── automation_log_service.py
+        ├── category_service.py
+        ├── job_service.py
+        ├── notification_service.py
+        ├── platform_service.py
+        ├── script_generator.py
+        ├── script_service.py
+        ├── uploader.py
+        ├── user_service.py
+        ├── video_editor.py
+        ├── video_generator.py
+        ├── video_issue_service.py
+        ├── video_service.py
+        ├── voice_generator.py
+        └── webhook_service.py
+    ├── utils/
+        ├── __init__.py
+        ├── decorators.py
+        ├── file_handler.py
+        └── logger.py
+    └── __init__.py
+tests/
+    ├── __init__.py
+    ├── test_auth.py
+    ├── test_db.py
+    └── test_security.py
+.gitignore
+config.py
+main.py
+old.txt
+README.md
+requirements.txt
+run.py
+setup_structure.py
 ```
 
 ---
