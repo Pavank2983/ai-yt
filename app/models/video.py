@@ -27,4 +27,4 @@ class Video(Base):
     platform = relationship("Platform", back_populates="videos")
     issues = relationship("VideoIssue", back_populates="video", cascade="all, delete")
     logs = relationship("AutomationLog", back_populates="video", cascade="all, delete")
-    analytics = relationship("Analytics", back_populates="video", cascade="all, delete")
+    analytics = relationship("Analytic", back_populates="video", cascade="all, delete")

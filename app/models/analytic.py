@@ -6,7 +6,7 @@ from datetime import datetime
 from app.db.database import Base
 
 # ---------------------- ANALYTICS ----------------------
-class Analytics(Base):
+class Analytic(Base):
     __tablename__ = "analytics"
 
     id = Column(Integer, primary_key=True, index=True)

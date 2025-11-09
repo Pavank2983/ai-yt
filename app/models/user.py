@@ -12,8 +12,12 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(100))
     email = Column(String(100), unique=True, index=True)
-    password_hash = Column(String(255))
-    role = Column(Enum("admin", "editor", "viewer", name="user_roles"))
+    password = Column(String(255))
+    role = Column(
+        Enum("admin", "editor", "viewer", name="user_roles"),
+        default="viewer",
+        nullable=False
+    )
     status = Column(Enum("active", "inactive", name="user_status"), default="active")
     created_at = Column(DateTime, default=datetime.utcnow)
 
