@@ -10,6 +10,8 @@ from .automation_log import AutomationLog
 from .api_usage import ApiUsage
 from .analytic import Analytic
 from .webhook import Webhook
+from .script_generation_job import ScriptGenerationJob
+from .voice import Voice
 
 __all__ = [
     "User",
@@ -24,4 +26,6 @@ __all__ = [
     "ApiUsage",
     "Analytic",
     "Webhook",
+    "ScriptGenerationJob",
+    "Voice"
 ]

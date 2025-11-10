@@ -52,10 +52,9 @@ files = [
     "app/utils/decorators.py",
 
     # Services
-    "app/services/script_generator.py",
-    "app/services/voice_generator.py",
-    "app/services/video_generator.py",
-    "app/services/video_editor.py",
+    "app/services/voice_generation_service.py",
+    "app/services/video_generation_service.py",
+    "app/services/video_editor_service.py",
 
     # Scheduler
     "app/scheduler/daily_job.py",
@@ -71,10 +70,14 @@ files = [
     "tests/test_auth.py",
     "tests/test_security.py",
     "tests/test_db.py",
+    
+    # Jobs
+    "app/models/script_generation_job.py",
+    "app/services/script_bulk_service.py"
 ]
 
 # ✅ Auto-create base model, schema, route, and service files
-modules = ["analytic", "api_usage", "automation_log", "category", "job", "notification", "platform", "script", "user", "video_issue", "video", "webhook"]
+modules = ["analytic", "api_usage", "automation_log", "category", "job", "notification", "platform", "script", "user", "video_issue", "video", "webhook", "voice"]
 
 for module in modules:
     files.extend([

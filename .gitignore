@@ -6,7 +6,6 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
-.vscode/
 
 # Environment & logs
 .env
@@ -17,3 +16,4 @@ output/
 assets/music/
 assets/voices/
 assets/images/
+assets/templates/

@@ -22,6 +22,7 @@ class User(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     categories = relationship("Category", back_populates="creator", cascade="all, delete")
-    scripts = relationship("Script", back_populates="creator", cascade="all, delete")
+    scripts = relationship("Script", back_populates="creator", cascade="all, delete", foreign_keys="Script.created_by")
     platforms = relationship("Platform", back_populates="owner", cascade="all, delete")
     notifications = relationship("Notification", back_populates="user", cascade="all, delete")
+    generation_jobs = relationship("ScriptGenerationJob", back_populates="creator")
