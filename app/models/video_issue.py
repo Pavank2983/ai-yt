@@ -1,8 +1,8 @@
 from sqlalchemy import (
-    Column, Integer, Text, Enum, DateTime, ForeignKey
+    Column, Integer, Text, Enum, DateTime, ForeignKey, text
 )
 from sqlalchemy.orm import relationship
-from datetime import datetime
+from datetime import datetime, UTC
 from app.db.database import Base
 
 # ---------------------- VIDEO ISSUES ----------------------
@@ -15,7 +15,11 @@ class VideoIssue(Base):
     description = Column(Text)
     detected_by = Column(Enum("platform", "manual", "ai", name="detection_sources"))
     status = Column(Enum("active", "resolved", name="issue_status"))
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        server_default=text("CURRENT_TIMESTAMP")
+    )
     resolved_at = Column(DateTime)
 
     video = relationship("Video", back_populates="issues")

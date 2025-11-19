@@ -1,8 +1,8 @@
 from sqlalchemy import (
-    Column, Integer, String, Enum, DateTime, ForeignKey, Index
+    Column, Integer, String, Enum, DateTime, ForeignKey, Index, text
 )
 from sqlalchemy.orm import relationship
-from datetime import datetime
+from datetime import datetime, UTC
 from app.db.database import Base
 
 
@@ -20,7 +20,12 @@ class ScriptGenerationJob(Base):
     )
 
     error_message = Column(String(255), nullable=True)
-    started_at = Column(DateTime, default=datetime.utcnow, index=True)
+    started_at = Column(
+        DateTime(timezone=True),
+        index=True,
+        default=lambda: datetime.now(UTC),
+        server_default=text("CURRENT_TIMESTAMP")
+    )
     completed_at = Column(DateTime, nullable=True)
     created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 

@@ -8,7 +8,7 @@ from app.services.auth_service import register_user, login_user
 from app.core.security import get_current_user
 from app.config.settings import settings
 
-router = APIRouter(prefix="/auth", tags=["Authentication"])
+router = APIRouter(prefix="/auth")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
 

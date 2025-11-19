@@ -3,7 +3,7 @@ import io
 import json
 import time
 import requests
-from datetime import datetime
+from datetime import datetime, UTC
 import app.utils.audioop_stub as audioop_stub
 from pydub import AudioSegment
 from openai import OpenAI
@@ -239,7 +239,7 @@ def generate_voice_for_script(
         "file_path": result["file_path"],
         "duration": result["duration"],
         "speaker": speaker or "Narrator",
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
     }
 
     if not script.tts_audio_files:

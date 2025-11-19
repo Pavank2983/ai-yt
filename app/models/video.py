@@ -1,11 +1,10 @@
 from sqlalchemy import (
-    Column, Integer, String, Text, Enum, DateTime, ForeignKey, JSON
+    Column, Integer, String, Text, Enum, DateTime, ForeignKey, JSON, Float, Boolean, text
 )
+from sqlalchemy.dialects.mysql import LONGTEXT
 from sqlalchemy.orm import relationship
-from datetime import datetime
 from app.db.database import Base
 
-# ---------------------- VIDEOS ----------------------
 class Video(Base):
     __tablename__ = "videos"
 
@@ -17,14 +16,30 @@ class Video(Base):
     description = Column(Text)
     file_url = Column(Text)
     thumbnail_url = Column(Text)
-    status = Column(Enum("draft", "rendering", "uploaded", "failed", name="video_status"))
+    voice_file_url = Column(Text)
+    ai_provider = Column(String(50), index=True)
+    ai_prompt_used = Column(Text)
+    generation_mode = Column(String(20), default="AI", server_default=text("'AI'"))
+    resolution = Column(String(20))
+    video_length = Column(Float)
+    render_time = Column(Float)
+    view_count = Column(Integer, server_default=text("0"))
+    error_log = Column(LONGTEXT, nullable=True)
+    status = Column(
+        Enum("draft", "rendering", "uploaded", "failed", name="video_status"),
+        server_default=text("'draft'"),
+        index=True
+    )
     upload_response = Column(JSON)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    is_active = Column(Boolean, server_default=text("1"), index=True)
+    created_at = Column(DateTime, server_default=text("CURRENT_TIMESTAMP"))
     uploaded_at = Column(DateTime)
 
+    # Relationships
     script = relationship("Script", back_populates="videos")
     category = relationship("Category", back_populates="videos")
     platform = relationship("Platform", back_populates="videos")
     issues = relationship("VideoIssue", back_populates="video", cascade="all, delete")
     logs = relationship("AutomationLog", back_populates="video", cascade="all, delete")
     analytics = relationship("Analytic", back_populates="video", cascade="all, delete")
+    video_job = relationship("VideoJob", back_populates="video", uselist=False)

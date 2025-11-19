@@ -7,7 +7,7 @@ from datetime import datetime
 import openai
 from openai import OpenAI
 
-router = APIRouter(tags=["Bulk Script Generation"])
+router = APIRouter(prefix="/scripts")
 
 
 @router.post("/bulk-generate")

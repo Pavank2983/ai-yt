@@ -8,10 +8,10 @@ from app.services.voice_generation_service import (
     generate_multivoice_for_script
 )
 from app.core.security import role_required
-from datetime import datetime
+from datetime import datetime, UTC
 import re
 
-router = APIRouter(tags=["Voice Generation"])
+router = APIRouter()
 
 
 @router.post("/voice/generate/{script_id}")
@@ -91,7 +91,7 @@ def generate_voice_endpoint(
             "merged_file": result.get("merged_file"),
             "segments": result.get("segments"),
             "message": result.get("message", "Voice generation completed"),
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
         }
 
     except Exception as e:

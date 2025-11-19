@@ -1,8 +1,8 @@
 from sqlalchemy import (
-    Column, Integer, DateTime, ForeignKey, Float, BigInteger,
+    Column, Integer, DateTime, ForeignKey, Float, BigInteger, text
 )
 from sqlalchemy.orm import relationship
-from datetime import datetime
+from datetime import datetime, UTC
 from app.db.database import Base
 
 # ---------------------- ANALYTICS ----------------------
@@ -17,6 +17,10 @@ class Analytic(Base):
     comments = Column(BigInteger, default=0)
     watch_time = Column(Float, default=0.0)
     ctr = Column(Float, default=0.0)
-    last_updated = Column(DateTime, default=datetime.utcnow)
+    last_updated = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        server_default=text("CURRENT_TIMESTAMP")
+    )
 
     video = relationship("Video", back_populates="analytics")

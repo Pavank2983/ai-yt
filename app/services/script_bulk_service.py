@@ -1,7 +1,7 @@
 import os
 import json
 import random
-from datetime import datetime
+from datetime import datetime, UTC
 from sqlalchemy.orm import Session
 import openai
 from openai import OpenAI
@@ -98,7 +98,7 @@ def bulk_generate_scripts(db: Session, user_id: int, count: int):
     job = ScriptGenerationJob(
         requested_count=count,
         status="running",
-        started_at=datetime.utcnow(),
+        started_at=datetime.now(UTC),
         created_by=user_id,
     )
     db.add(job)
@@ -154,7 +154,7 @@ def bulk_generate_scripts(db: Session, user_id: int, count: int):
     job.generated_count = generated
     job.failed_count = failed
     job.status = "completed" if generated > 0 else "failed"
-    job.completed_at = datetime.utcnow()
+    job.completed_at = datetime.now(UTC)
     db.commit()
     db.refresh(job)
 

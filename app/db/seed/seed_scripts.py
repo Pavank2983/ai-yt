@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, UTC
 from sqlalchemy.orm import Session
 from app.db.database import SessionLocal
 from app.models.script import Script
@@ -124,7 +124,7 @@ def seed_scripts():
             ai_generated=True,
             created_by=1,
             status=0,
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(UTC),
         )
         db.add(script)
         inserted += 1

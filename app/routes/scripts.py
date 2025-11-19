@@ -3,9 +3,9 @@ from sqlalchemy.orm import Session
 from app.db.database import get_db
 from app.schemas.script import ScriptCreate, ScriptResponse
 from app.services.script_service import create_script
-from app.core.security import get_current_user, role_required
+from app.core.security import role_required
 
-router = APIRouter(tags=["Script Generation"])
+router = APIRouter(prefix="/scripts")
 
 
 @router.post("/", response_model=ScriptResponse)

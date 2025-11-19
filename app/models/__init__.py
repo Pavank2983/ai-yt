@@ -12,6 +12,7 @@ from .analytic import Analytic
 from .webhook import Webhook
 from .script_generation_job import ScriptGenerationJob
 from .voice import Voice
+from .video_job import VideoJob
 
 __all__ = [
     "User",
@@ -27,5 +28,6 @@ __all__ = [
     "Analytic",
     "Webhook",
     "ScriptGenerationJob",
-    "Voice"
+    "Voice",
+    "VideoJob",
 ]
