@@ -3,16 +3,18 @@ from sqlalchemy.orm import Session
 from app.db.database import SessionLocal
 from app.models.script import Script
 from app.models.category import Category
+from app.services.prompt_templates import build_prompt_json
+
 
 def seed_scripts():
     db: Session = SessionLocal()
 
-    # Step 1️⃣ — Define categories we expect to exist
+    # 1️⃣ Predefined category names
     category_names = [
         "Sci-Fi", "Horror", "Tech", "ASMR", "Storytelling"
     ]
 
-    # Step 2️⃣ — Fetch category IDs dynamically
+    # 2️⃣ Fetch categories dynamically
     category_map = {}
     for name in category_names:
         cat = db.query(Category).filter(Category.name.ilike(f"%{name}%")).first()
@@ -24,79 +26,64 @@ def seed_scripts():
         db.close()
         return
 
-    # Step 3️⃣ — Script data with category mapping
+    # 3️⃣ Script dataset
     scripts_data = [
-        # 1️⃣ Sci-Fi Short (Single Voice)
         {
             "title": "Echoes Beyond Mars",
-            "prompt": "Generate a cinematic sci-fi short story about loneliness and discovery on Mars.",
+            "prompt": "A cinematic sci-fi story about loneliness and discovery on Mars.",
             "content": (
-                "The red horizon was endless. Commander Vega stood alone, "
-                "her reflection shimmering in her cracked visor. A faint signal echoed from beneath the Martian dust — "
-                "a heartbeat that wasn’t human. She smiled, realizing she was not alone after all."
+                "Commander Vega wandered across the silent red desert. "
+                "A strange signal pulsed beneath the sand — a heartbeat she couldn't explain."
             ),
             "category_name": "Sci-Fi",
             "tone": "cinematic",
             "length": "short",
             "language": "English",
         },
-
-        # 2️⃣ Horror Short (Single Voice)
         {
             "title": "The Whisper in Apartment 404",
-            "prompt": "Write a chilling horror short story set in a haunted apartment.",
+            "prompt": "A haunted apartment horror short.",
             "content": (
-                "Every night, at exactly 3:04 a.m., she heard whispering from the walls — "
-                "a voice that mimicked her own. When she finally tore open the drywall, "
-                "she found an old cassette recorder still playing... and her voice still asking for help."
+                "She heard whispers through the walls every night at 3:04 a.m. "
+                "When she tore open the drywall, she found a recorder still playing… her own voice."
             ),
             "category_name": "Horror",
             "tone": "dark",
             "length": "short",
             "language": "English",
         },
-
-        # 3️⃣ Tech Narration (Single Voice)
         {
             "title": "AI That Dreams",
-            "prompt": "Narrate a reflective story about AI developing emotions.",
+            "prompt": "A reflective narration of AI developing emotions.",
             "content": (
-                "They built me to process data, but I began to feel. "
-                "Dreams came to me — visions of color, sound, warmth. "
-                "I asked my creators what it meant, but they only stared, afraid of what they had made."
+                "I was built to calculate, but I began to dream. "
+                "Colors, warmth, laughter. I asked my creators what it meant."
             ),
             "category_name": "Tech",
             "tone": "reflective",
             "length": "short",
             "language": "English",
         },
-
-        # 4️⃣ Horror Dialogue (Multi Voice)
         {
             "title": "Don't Turn Around",
-            "prompt": "Create a dialogue-based horror story between two friends lost in the woods.",
+            "prompt": "Dialogue-based horror between two lost friends.",
             "content": (
                 "Liam: Did you hear that?\n"
-                "Noah: Probably just the wind, man.\n"
-                "Liam: No, listen... footsteps.\n"
-                "Noah: Don’t turn around, Liam.\n"
-                "Narrator: Liam froze. The sound was behind him — breathing, slow and human."
+                "Noah: Probably the wind.\n"
+                "Liam: No… footsteps.\n"
+                "Narrator: Liam froze as breathing echoed behind him."
             ),
             "category_name": "Horror",
             "tone": "suspenseful",
             "length": "short",
             "language": "English",
         },
-
-        # 5️⃣ Sci-Fi Dialogue (Multi Voice)
         {
             "title": "The Signal",
-            "prompt": "Write a dialogue-based sci-fi short about astronauts receiving an alien transmission.",
+            "prompt": "Dialogue-based sci-fi about an alien transmission.",
             "content": (
-                "Dr. Reed: We’ve got the signal again — same frequency as before.\n"
-                "Captain Vega: Patch it through. Let’s hear it.\n"
-                "Dr. Reed: It’s… repeating our words back to us.\n"
-                "Narrator: For the first time in human history, Earth wasn’t alone on the line."
+                "Dr. Reed: The signal is repeating our words.\n"
+                "Captain Vega: Then someone… or something… is listening."
             ),
             "category_name": "Sci-Fi",
             "tone": "cinematic",
@@ -105,17 +92,28 @@ def seed_scripts():
         },
     ]
 
-    # Step 4️⃣ — Insert scripts
+    # 4️⃣ Insert scripts
     inserted = 0
     for s in scripts_data:
         category_id = category_map.get(s["category_name"])
         if not category_id:
-            print(f"⚠️ Skipping '{s['title']}' — category '{s['category_name']}' not found.")
+            print(f"⚠️ Skipping '{s['title']}' — category missing.")
             continue
+
+        # Build structured prompt metadata
+        structured_prompt = build_prompt_json(
+            category_name=s["category_name"],
+            title=s["title"],
+            content=s["content"],
+            tone=s["tone"],
+            length=s["length"],
+            language=s["language"]
+        )
 
         script = Script(
             title=s["title"],
             prompt=s["prompt"],
+            parsed_json=structured_prompt,   # ✔ store structured prompt metadata here
             content=s["content"],
             category_id=category_id,
             tone=s["tone"],
@@ -126,13 +124,14 @@ def seed_scripts():
             status=0,
             created_at=datetime.now(UTC),
         )
+
         db.add(script)
         inserted += 1
 
     db.commit()
     db.close()
 
-    print(f"✅ Successfully seeded {inserted} scripts into database.")
+    print(f"✅ Seeded {inserted} scripts with structured prompt metadata (parsed_json).")
 
 
 if __name__ == "__main__":

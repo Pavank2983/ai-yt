@@ -13,6 +13,7 @@ from .webhook import Webhook
 from .script_generation_job import ScriptGenerationJob
 from .voice import Voice
 from .video_job import VideoJob
+from .video_merge_job import VideoMergeJob
 
 __all__ = [
     "User",
@@ -30,4 +31,5 @@ __all__ = [
     "ScriptGenerationJob",
     "Voice",
     "VideoJob",
+    "VideoMergeJob",
 ]

@@ -34,6 +34,9 @@ class Video(Base):
     is_active = Column(Boolean, server_default=text("1"), index=True)
     created_at = Column(DateTime, server_default=text("CURRENT_TIMESTAMP"))
     uploaded_at = Column(DateTime)
+    assets_manifest = Column(Text, nullable=True)
+    final_duration = Column(Integer, nullable=True)
+    final_resolution = Column(String(50), nullable=True)
 
     # Relationships
     script = relationship("Script", back_populates="videos")
@@ -42,4 +45,5 @@ class Video(Base):
     issues = relationship("VideoIssue", back_populates="video", cascade="all, delete")
     logs = relationship("AutomationLog", back_populates="video", cascade="all, delete")
     analytics = relationship("Analytic", back_populates="video", cascade="all, delete")
-    video_job = relationship("VideoJob", back_populates="video", uselist=False)
+    jobs = relationship("VideoJob", back_populates="video", cascade="all, delete-orphan")
+    merge_jobs = relationship("VideoMergeJob", back_populates="video", cascade="all, delete-orphan")

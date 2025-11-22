@@ -9,7 +9,7 @@ from apscheduler.triggers.cron import CronTrigger
 from dotenv import load_dotenv
 
 # Routes
-from app.routes import auth_route, scripts, script_bulk, voices, videos
+from app.routes import auth_route, scripts, voices, videos
 
 # Job processor functions (new architecture)
 from app.services.video_job_service import (
@@ -120,7 +120,6 @@ app = FastAPI(
 # Routers
 app.include_router(auth_route.router, tags=["Authentication"])
 app.include_router(scripts.router, tags=["Script Generation"])
-app.include_router(script_bulk.router, tags=["Bulk Script Generation"])
 app.include_router(voices.router, tags=["TTS Voice Generation"])
 app.include_router(videos.router, tags=["Video Generation"])
 

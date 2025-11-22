@@ -191,6 +191,8 @@ def generate_voice_for_script(
     script_text = text or script.content
     voice_name = voice_name or DEFAULT_VOICE
     output_path = generate_output_path(script.id, provider, voice_name, speaker=speaker)
+    folder = os.path.dirname(output_path)
+    os.makedirs(folder, exist_ok=True)
 
     print(f"[INFO] Generating voice for Script {script.id} using provider: {provider.upper()} | Voice: {voice_name}")
 
