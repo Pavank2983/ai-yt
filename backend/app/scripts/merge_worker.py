@@ -1,4 +1,3 @@
-# app/scripts/merge_worker.py
 import os
 import time
 import json
