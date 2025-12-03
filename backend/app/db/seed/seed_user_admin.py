@@ -16,7 +16,7 @@ def seed_admin_user():
     user = User(
         name="Admin",
         email="pavank9415@gmail.com",
-        password=hash_password("123456"),
+        password=hash_password("Pavan2983"),
         role="admin",
         status="active",
         created_at=datetime.now(UTC)

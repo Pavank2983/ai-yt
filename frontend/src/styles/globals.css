@@ -47,6 +47,7 @@
     --muted-foreground: 217 10% 65%;
 
     --accent: 217 91% 60%;
+    /* --accent: 220 100% 65%; */
     --accent-foreground: 222 47% 11%;
 
     --destructive: 0 84% 60%;
@@ -132,19 +133,31 @@
     scroll-behavior: smooth;
   }
 
-  /* Scrollbar */
+  /* Smooth scrollbar */
   ::-webkit-scrollbar {
     width: 8px;
+    height: 8px;
   }
+
   ::-webkit-scrollbar-track {
-    background: #f1f1f1;
+    background: hsl(var(--background));
   }
+
   ::-webkit-scrollbar-thumb {
-    background: #888;
+    background: linear-gradient(
+      180deg,
+      hsl(var(--primary)),
+      hsl(var(--accent))
+    );
     border-radius: 10px;
   }
+
   ::-webkit-scrollbar-thumb:hover {
-    background: #555;
+    background: linear-gradient(
+      180deg,
+      hsl(var(--primary) / 0.8),
+      hsl(var(--accent) / 0.8)
+    );
   }
 }
 
@@ -270,4 +283,64 @@
 .parallax {
   transform: translateY(var(--parallax-y, 0));
   transition: transform 0.1s ease-out;
+}
+
+.animate-pulse-slow {
+  animation: 3s ease 0s infinite normal none running pulse-slow;
+}
+@keyframes pulse-slow {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.8;
+  }
+}
+
+/* Modal scale + fade animation */
+@keyframes modal-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.9) translateY(10px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.modal-animate {
+  animation: modal-pop 0.25s ease-out forwards;
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.fade-in-up {
+  animation: fadeInUp 0.25s ease-out;
+}
+
+/* (User TopBar) */
+@keyframes scaleFade {
+  0% {
+    opacity: 0;
+    transform: scale(0.95);
+    transform-origin: top right;
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+.animate-scaleFade {
+  animation: scaleFade 0.15s ease-out;
 }
