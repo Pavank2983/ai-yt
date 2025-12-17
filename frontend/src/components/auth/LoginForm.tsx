@@ -5,8 +5,9 @@ import { loginUser } from "@/lib/api/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Eye, EyeOff, Sparkles } from "lucide-react";
+import { Eye, EyeOff } from "lucide-react";
 import Link from "next/link";
+import AppLogo from "@/components/common/AppLogo";
 
 export default function LoginForm({ isModal = false }: any) {
     const [loading, setLoading] = useState(false);
@@ -97,10 +98,7 @@ export default function LoginForm({ isModal = false }: any) {
                 {/* Header */}
                 <div className="text-center mb-8">
                     <div className="inline-flex items-center gap-2 mb-4">
-                        <Sparkles className="w-8 h-8 text-primary" />
-                        <h1 className="text-3xl font-display font-bold gradient-text">
-                            AI Shorts
-                        </h1>
+                        <AppLogo />
                     </div>
                     <h2 className="text-2xl font-semibold mb-2">Welcome Back</h2>
                     <p className="text-muted-foreground">
