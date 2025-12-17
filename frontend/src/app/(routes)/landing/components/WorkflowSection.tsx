@@ -17,7 +17,7 @@ function WorkflowStep({ number, title, description, delay }: StepProps) {
             className="workflow-step flex items-start gap-4"
             style={{ animationDelay: delay }}
         >
-            <div className="flex-shrink-0 w-12 h-12 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center font-bold text-lg neon-glow">
+            <div className="flex-shrink-0 w-12 h-12 rounded-full bg-gradient-to-br logo-icon-bg  from-primary  to-accent flex items-center justify-center font-bold text-lg neon-glow">
                 {number}
             </div>
 

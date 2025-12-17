@@ -1,0 +1,105 @@
+/* ---------------------------------------------------
+   ANIMATIONS
+--------------------------------------------------- */
+.stagger-1 {
+    animation-delay: 0.1s;
+}
+.stagger-2 {
+    animation-delay: 0.2s;
+}
+.stagger-3 {
+    animation-delay: 0.3s;
+}
+.stagger-4 {
+    animation-delay: 0.4s;
+}
+.hover-lift {
+    transition: transform 0.3s ease;
+}
+.hover-lift:hover {
+    transform: translateY(-5px);
+}
+.parallax {
+    transform: translateY(var(--parallax-y, 0));
+    transition: transform 0.1s ease-out;
+}
+
+/* Animation Classes */
+.image-scale-in {
+    animation: scaleIn 0.7s cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
+}
+.fadeIn {
+    opacity: 0;
+    transform: translateY(20px);
+    animation: fadeIn 0.8s ease forwards;
+}
+.animate-pulse-slow {
+  animation: 3s ease 0s infinite normal none running pulse-slow;
+}
+.modal-animate {
+  animation: modal-pop 0.25s ease-out forwards;
+}
+.fade-in-up {
+  animation: fadeInUp 0.25s ease-out;
+}
+.animate-scaleFade {
+  animation: scaleFade 0.15s ease-out;
+}
+
+/* Keyframes */
+@keyframes scaleIn {
+    0% {
+        transform: scale(0.95);
+        opacity: 0;
+    }
+    100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+@keyframes fadeIn {
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+@keyframes pulse-slow {
+    0%,
+    100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.8;
+    }
+}
+@keyframes modal-pop {
+    0% {
+        opacity: 0;
+        transform: scale(0.9) translateY(10px);
+    }
+    100% {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(6px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+@keyframes scaleFade {
+    0% {
+        opacity: 0;
+        transform: scale(0.95);
+        transform-origin: top right;
+    }
+    100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+}

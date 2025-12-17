@@ -10,14 +10,14 @@ export default function ThemeToggle({ className = "" }: { className?: string }) 
         const prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
         const initial = (stored as "light" | "dark") || (prefersDark ? "dark" : "light");
         setTheme(initial);
-        document.documentElement.classList.toggle("dark", initial === "dark");
+        document.body.classList.toggle("dark", initial === "dark");
     }, []);
 
     const toggle = () => {
         const next = theme === "dark" ? "light" : "dark";
         setTheme(next);
         localStorage.setItem("theme", next);
-        document.documentElement.classList.toggle("dark", next === "dark");
+        document.body.classList.toggle("dark", next === "dark");
     };
 
     return (

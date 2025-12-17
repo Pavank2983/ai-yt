@@ -1,11 +1,21 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import "../styles/globals.css";
+import "@/styles/globals.css";
+import "@/styles/theme-home.css";
+import "@/styles/theme-dashboard.css";
 import { headers } from "next/headers";
 import { AuthProvider } from "@/context/AuthContext";
+import ClientThemeProvider from "@/components/providers/ClientThemeProvider";
 
-const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
-const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
+const geistSans = Geist({
+  variable: "--font-geist-sans",
+  subsets: ["latin"],
+});
+
+const geistMono = Geist_Mono({
+  variable: "--font-geist-mono",
+  subsets: ["latin"],
+});
 
 const allowIndexing = process.env.NEXT_PUBLIC_INDEX_FOLLOW_ENABLED === "true";
 
@@ -38,12 +48,16 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({ children,}: { children: React.ReactNode;}) {
   return (
     <html lang="en">
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
+      <body
+        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+      >
         <AuthProvider>
-          {children}
+          <ClientThemeProvider>
+            {children}
+          </ClientThemeProvider>
         </AuthProvider>
       </body>
     </html>
