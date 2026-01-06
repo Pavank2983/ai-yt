@@ -10,6 +10,7 @@ from .script import ScriptCreate, ScriptResponse
 from .video import VideoCreate, VideoResponse
 from .video_issue import VideoIssueCreate, VideoIssueResponse
 from .webhook import WebhookCreate, WebhookResponse
+from .dashboard import DashboardMetricsResponse
 
 __all__ = [
     "UserCreate", "UserResponse",
@@ -24,4 +25,5 @@ __all__ = [
     "VideoCreate", "VideoResponse",
     "VideoIssueCreate", "VideoIssueResponse",
     "WebhookCreate", "WebhookResponse",
+    "DashboardMetricsResponse",
 ]

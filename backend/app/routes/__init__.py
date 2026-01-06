@@ -1,4 +1,4 @@
-from . import users, categories, platforms, scripts, videos, notifications, jobs, automation_logs, api_usages, analytics, webhooks
+from . import users, categories, platforms, scripts, videos, notifications, jobs, automation_logs, api_usages, analytics, webhooks, dashboard
 
 __all__ = [
     "users",
@@ -12,4 +12,5 @@ __all__ = [
     "api_usages",
     "analytics",
     "webhooks",
+    "dashboard",
 ]

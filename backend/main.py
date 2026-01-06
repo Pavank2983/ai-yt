@@ -4,12 +4,13 @@ from logging.handlers import RotatingFileHandler
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from dotenv import load_dotenv
 
 # Routes
-from app.routes import auth_route, scripts, voices, videos
+from app.routes import auth_route, scripts, voices, videos, dashboard
 
 # Job processor functions (new architecture)
 from app.services.video_job_service import (
@@ -116,12 +117,26 @@ app = FastAPI(
     title="AI YouTube Automation API",
     lifespan=lifespan
 )
+print(os.getenv("FRONTEND_URL"))
+ALLOWED_ORIGINS = [
+    os.getenv("FRONTEND_URL"),  # frontend
+    # "https://yourdomain.com"  # production later
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=ALLOWED_ORIGINS,  # ❌ never use ["*"] with auth
+    allow_credentials=False,        # ✅ header-based auth (no cookies)
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Routers
 app.include_router(auth_route.router, tags=["Authentication"])
 app.include_router(scripts.router, tags=["Script Generation"])
 app.include_router(voices.router, tags=["TTS Voice Generation"])
 app.include_router(videos.router, tags=["Video Generation"])
+app.include_router(dashboard.router, tags=["Dashboard"])
 
 # Root endpoint
 @app.get("/")

@@ -25,7 +25,7 @@ def seed_admin_user():
     db.add(user)
     db.commit()
     db.close()
-    print("✅ Default admin user created with ID 1 (email: pavank9415@gmail.com, password: 123456)")
+    print("✅ Default admin user created with ID 1 (email: pavank9415@gmail.com, password: Pavan2983)")
 
 if __name__ == "__main__":
     seed_admin_user()

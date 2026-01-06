@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion } from "framer-motion";
@@ -27,7 +26,9 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-/* NAVIGATION ITEMS (Role-Based) */
+/* ================================
+   NAVIGATION ITEMS (ROLE-BASED)
+================================ */
 const NAV_ITEMS = [
     // ----- Viewer -----
     {
@@ -126,7 +127,9 @@ const NAV_ITEMS = [
     },
 ];
 
-/* SIDEBAR COMPONENT */
+/* ================================
+   SIDEBAR COMPONENT
+================================ */
 export function Sidebar({
     isOpen,
     toggle,
@@ -138,19 +141,23 @@ export function Sidebar({
     const pathname = usePathname();
 
     const role = user?.role ?? "viewer";
-    const filteredNav = NAV_ITEMS.filter((item) => item.roles.includes(role));
+
+    // 🔒 Role-based filtering (Viewer is minimal by design)
+    const filteredNav = NAV_ITEMS.filter((item) =>
+        item.roles.includes(role)
+    );
 
     return (
         <motion.aside
             initial={false}
             animate={{ width: isOpen ? 240 : 72 }}
             className="
-        fixed left-0 top-0 z-40 h-screen 
-        border-r border-border 
-        bg-card/80 backdrop-blur-xl
-        transition-all duration-300 
-        flex flex-col
-      "
+                fixed left-0 top-0 z-40 h-screen
+                border-r border-border
+                bg-card/80 backdrop-blur-xl
+                transition-all duration-300
+                flex flex-col
+            "
         >
             {/* ---- Logo Header ---- */}
             <div className="flex h-16 items-center justify-between px-4 border-b border-border">
@@ -160,48 +167,12 @@ export function Sidebar({
                         !isOpen && "justify-center w-full"
                     )}
                 >
-                    {!isOpen && (
-                        <AppLogoSvg />
-                    )}
-
-                    {isOpen && (
-                        <AppLogo />
-                    )}
+                    {!isOpen && <AppLogoSvg />}
+                    {isOpen && <AppLogo />}
                 </div>
             </div>
 
-            {/* ---- NEW PROJECT BUTTON (Editor/Admin) ---- */}
-            {role !== "viewer" && (
-                <div className="p-3">
-                    {isOpen ? (
-                        <Button
-                            className="
-                w-full flex items-center justify-start gap-2
-                bg-primary/90 hover:bg-primary 
-                shadow-lg shadow-primary/20
-              "
-                        >
-                            <PlusCircle className="h-5 w-5" />
-                            New Project
-                        </Button>
-                    ) : (
-                        <div className="flex justify-center">
-                            <Button
-                                size="icon"
-                                className="
-                  h-10 w-10 rounded-full
-                  bg-primary/90 hover:bg-primary
-                  shadow-lg shadow-primary/20
-                "
-                            >
-                                <PlusCircle className="h-5 w-5" />
-                            </Button>
-                        </div>
-                    )}
-                </div>
-            )}
-
-            {/* ---- Navigation Items ---- */}
+            {/* ---- Navigation ---- */}
             <nav className="flex-1 overflow-y-auto px-2 py-3 space-y-1">
                 {filteredNav.map((item) => {
                     const isActive = pathname === item.href;
@@ -213,16 +184,17 @@ export function Sidebar({
                             className={cn(
                                 "relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all",
                                 "hover:bg-accent hover:text-accent-foreground",
-
                                 isActive
                                     ? "bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary"
                                     : "text-muted-foreground",
-
                                 !isOpen && "justify-center px-2"
                             )}
                         >
                             <item.icon
-                                className={cn("h-5 w-5", isActive && "text-primary")}
+                                className={cn(
+                                    "h-5 w-5",
+                                    isActive && "text-primary"
+                                )}
                             />
                             {isOpen && <span>{item.title}</span>}
 
@@ -230,10 +202,10 @@ export function Sidebar({
                             {!isOpen && isActive && (
                                 <div
                                     className="
-                    absolute left-16 rounded-md bg-popover px-2 py-1 text-xs
-                    font-medium shadow-md
-                    animate-in fade-in-0 zoom-in-95
-                  "
+                                        absolute left-16 rounded-md bg-popover px-2 py-1 text-xs
+                                        font-medium shadow-md
+                                        animate-in fade-in-0 zoom-in-95
+                                    "
                                 >
                                     {item.title}
                                 </div>

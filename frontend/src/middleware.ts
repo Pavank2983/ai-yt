@@ -63,6 +63,7 @@ export function middleware(req: NextRequest) {
     const { pathname } = req.nextUrl;
 
     const token = req.cookies.get("access_token")?.value || null;
+    const user_role = req.cookies.get("user_role")?.value || null;
 
     // 1. NO TOKEN → guest
     if (!token) {
@@ -87,7 +88,7 @@ export function middleware(req: NextRequest) {
         return res;
     }
 
-    const role = decoded.role || "guest";
+    const role = user_role || decoded.role || "guest";
 
     // 4. Logged user must NOT see login/register
     if (PUBLIC_AUTH_PAGES.includes(pathname)) {

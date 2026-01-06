@@ -69,7 +69,6 @@ def current_user(request: Request, db: Session = Depends(get_db)):
         )
 
     user_email = payload.get("sub")
-    role = payload.get("role")
 
     # 3. Fetch user from DB
     user = db.query(User).filter(User.email == user_email).first()
@@ -84,6 +83,6 @@ def current_user(request: Request, db: Session = Depends(get_db)):
         "id": user.id,
         "name": user.name,
         "email": user.email,
-        "role": role,
+        "role": user.role,
         "is_active": user.is_active,
     }

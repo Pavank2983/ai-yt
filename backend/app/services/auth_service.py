@@ -54,7 +54,7 @@ def login_user(login_data: UserLogin, db: Session):
 
     # Create JWT token
     access_token = create_access_token(
-        data={"sub": user.email, "role": user.role}
+        data={"sub": user.email}
     )
 
     # Prepare response
@@ -71,6 +71,17 @@ def login_user(login_data: UserLogin, db: Session):
     response.set_cookie(
         key="access_token",
         value=access_token,
+        httponly=True,
+        secure= os.getenv("APP_ENV") != "development",      # change to True in production (HTTPS)
+        samesite="lax",
+        max_age=60 * 60 * 24 * 7,   # 7 days
+        path="/"
+    )
+    
+    # Store user role in cookie (not HttpOnly, can be accessed by frontend)
+    response.set_cookie(
+        key="user_role",
+        value=user.role,
         httponly=True,
         secure= os.getenv("APP_ENV") != "development",      # change to True in production (HTTPS)
         samesite="lax",
