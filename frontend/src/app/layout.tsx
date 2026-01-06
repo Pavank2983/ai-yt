@@ -4,8 +4,8 @@ import "@/styles/globals.css";
 import "@/styles/theme-home.css";
 import "@/styles/theme-dashboard.css";
 import { headers } from "next/headers";
-import { AuthProvider } from "@/context/AuthContext";
-import ClientThemeProvider from "@/components/providers/ClientThemeProvider";
+
+import ClientProviders from "@/components/providers/ClientProviders";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -34,7 +34,8 @@ export async function generateMetadata(): Promise<Metadata> {
       default: "AI Shorts – AI YouTube Automation",
       template: "%s | AI Shorts",
     },
-    description: "Create AI-generated YouTube Shorts automatically using our advanced video automation system.",
+    description:
+      "Create AI-generated YouTube Shorts automatically using our advanced video automation system.",
     metadataBase: new URL(baseUrl),
     alternates: { canonical: baseUrl },
     robots: {
@@ -48,17 +49,19 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
-export default function RootLayout({ children,}: { children: React.ReactNode;}) {
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
     <html lang="en">
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <AuthProvider>
-          <ClientThemeProvider>
-            {children}
-          </ClientThemeProvider>
-        </AuthProvider>
+        <ClientProviders>
+          {children}
+        </ClientProviders>
       </body>
     </html>
   );

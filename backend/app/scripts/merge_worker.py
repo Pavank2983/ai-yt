@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from typing import List, Optional
 
 from app.db.database import SessionLocal
-from app.models.video import Video
+from app.models.video import Video, ApprovalStatus
 from app.models.video_job import VideoJob, JobStatus
 from app.models.video_merge_job import VideoMergeJob, MergeStatus
 
@@ -432,8 +432,14 @@ def process_merge_job(merge_job: VideoMergeJob, db):
         video = db.query(Video).filter(Video.id == video_id).first()
         if video:
             video.file_url = final_path
-            video.status = "uploaded"
-            video.uploaded_at = datetime.now(timezone.utc)
+
+            # 🔑 NEW FLOW: move to admin review
+            video.status = "ready_for_review"
+            video.approval_status = ApprovalStatus.pending_review
+
+            # Upload happens later (after approval)
+            video.uploaded_at = None
+
             db.add(video)
 
         merge_job.status = MergeStatus.success

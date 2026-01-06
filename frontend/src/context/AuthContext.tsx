@@ -20,25 +20,24 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export const AuthProvider = ({ children }: { children: ReactNode }) => {
+export function AuthProvider({ children }: { children: ReactNode }) {
     const [user, setUser] = useState<User | null>(null);
     const [loading, setLoading] = useState(true);
 
-    // Fetch /auth/me on first load
     const refreshUser = async () => {
         try {
-            const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_API_URL}/auth/me`, {
-                credentials: "include",
+            const res = await fetch("/api/auth/me", {
+                credentials: "include", // ✅ COOKIE SENT AUTOMATICALLY
             });
-           
 
-            if (res.ok) {
-                const data = await res.json();                
-                setUser(data);
-            } else {
+            if (!res.ok) {
                 setUser(null);
+                return;
             }
-        } catch (err) {
+
+            const data = await res.json();
+            setUser(data);
+        } catch {
             setUser(null);
         } finally {
             setLoading(false);
@@ -46,11 +45,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     };
 
     const logout = async () => {
-        await fetch(`${process.env.NEXT_PUBLIC_BACKEND_API_URL}/auth/logout`, {
+        await fetch("/api/auth/logout", {
             method: "POST",
             credentials: "include",
         });
         setUser(null);
+        window.location.href = "/";
     };
 
     useEffect(() => {
@@ -71,14 +71,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             {children}
         </AuthContext.Provider>
     );
-};
+}
 
-export const useAuth = () => {
-    const context = useContext(AuthContext);
-
-    if (!context) {
-        throw new Error("useAuth must be used inside AuthProvider");
-    }
-
-    return context;
-};
+export function useAuth() {
+    const ctx = useContext(AuthContext);
+    if (!ctx) throw new Error("useAuth must be used inside AuthProvider");
+    return ctx;
+}

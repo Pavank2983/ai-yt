@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, UTC
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from app.config.settings import settings
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 from app.db.database import get_db
@@ -53,26 +53,38 @@ def decode_access_token(token: str):
 # -----------------------------
 # 👤 Current User Dependency
 # -----------------------------
-def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+def get_current_user(
+    request: Request,
+    db: Session = Depends(get_db),
+):
     """
-    Extracts user from JWT token and returns user object.
+    Extracts user from JWT token (cookie-first, bearer fallback)
     """
+    
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
     )
 
+    jwt_token = request.cookies.get("access_token")
+
+    if not jwt_token:
+        raise credentials_exception
+
     try:
-        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
-        email: str = payload.get("sub")
-        if email is None:
+        payload = jwt.decode(
+            jwt_token,
+            settings.SECRET_KEY,
+            algorithms=[settings.ALGORITHM],
+        )
+        email = payload.get("sub")
+        if not email:
             raise credentials_exception
     except JWTError:
         raise credentials_exception
 
     user = db.query(User).filter(User.email == email).first()
-    if user is None:
+    if not user:
         raise credentials_exception
 
     return user
