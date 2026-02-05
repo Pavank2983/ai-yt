@@ -1,274 +1,322 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect } from "react";
+import { useRouter, useParams } from "next/navigation";
+import { useQuery, useMutation } from "@tanstack/react-query";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
+
 import {
     Save,
     Play,
-    Image as ImageIcon,
     Wand2,
-    Mic,
     Clock,
     ChevronLeft,
-    Plus,
 } from "lucide-react";
 
-interface ScriptEditorPageProps {
-    params: { id: string };
+import { getScript, analyzeScript, generateVideo } from "@/lib/api/scripts";
+
+/* ===================================================
+   TYPES (BACKEND-ALIGNED)
+=================================================== */
+
+type Scene = {
+    index: number;
+    narration: string;
+    duration_sec: number;
+    emotion?: string;
+    pacing?: string;
+    visual_prompt?: string;
+};
+
+type ScriptResponse = {
+    id: number;
+    title: string;
+    content: string;
+    status: "draft" | "running" | "success";
+    review_status: "pending" | "approved" | "rejected";
+    can_edit: boolean;
+    can_analyze: boolean;
+    can_generate_video: boolean;
+};
+
+/* ===================================================
+   UI HELPERS
+=================================================== */
+
+function CenteredMessage({
+    title,
+    description,
+    loading,
+    action,
+}: {
+    title: string;
+    description?: string;
+    loading?: boolean;
+    action?: { label: string; onClick: () => void };
+}) {
+    return (
+        <div className="flex flex-col items-center justify-center h-[60vh] text-center gap-3">
+            <h2 className="text-lg font-semibold">{title}</h2>
+            {description && (
+                <p className="text-sm text-muted-foreground">
+                    {description}
+                </p>
+            )}
+            {loading && (
+                <div className="animate-pulse text-xs text-muted-foreground">
+                    Loading…
+                </div>
+            )}
+            {action && (
+                <Button size="sm" onClick={action.onClick}>
+                    {action.label}
+                </Button>
+            )}
+        </div>
+    );
 }
 
-// Mock Scenes
-const MOCK_SCENES = [
-    {
-        id: 1,
-        text: "In the early 21st century, humanity faced a new dawn of intelligence.",
-        visual:
-            "Futuristic city skyline with digital overlays, cinematic lighting, blue and purple neon.",
-        duration: 5,
-    },
-    {
-        id: 2,
-        text: "Machines began to learn, not just calculate.",
-        visual:
-            "Close up of a robotic eye opening, revealing complex data streams within the iris.",
-        duration: 4,
-    },
-    {
-        id: 3,
-        text: "This was the beginning of the AI revolution.",
-        visual: "Abstract visualization of neural networks connecting across a globe.",
-        duration: 6,
-    },
-];
+/* ===================================================
+   PAGE
+=================================================== */
 
-export default function ScriptEditorPage({ params }: ScriptEditorPageProps) {
+export default function ScriptEditorPage() {
     const router = useRouter();
-    const isNew = params.id === "new";
+    const params = useParams();
+    const scriptId = params?.id as string | undefined;
 
-    const [title, setTitle] = useState(
-        isNew ? "Untitled Script" : "The Rise of Artificial Intelligence"
-    );
+    if (!scriptId) {
+        return (
+            <CenteredMessage
+                title="Invalid Script"
+                description="Script ID is missing or invalid."
+            />
+        );
+    }
 
-    const [scriptBody, setScriptBody] = useState(
-        "In the early 21st century, humanity faced a new dawn of intelligence.\n\nMachines began to learn, not just calculate.\n\nThis was the beginning of the AI revolution."
-    );
+    /* -------------------------------
+       STATE
+    -------------------------------- */
+    const [title, setTitle] = useState("");
+    const [content, setContent] = useState("");
+    const [scenes, setScenes] = useState<Scene[]>([]);
 
-    const [scenes, setScenes] = useState(MOCK_SCENES);
-    const [isGenerating, setIsGenerating] = useState(false);
+    /* -------------------------------
+       QUERY (SCRIPT META)
+    -------------------------------- */
+    const {
+        data,
+        isLoading,
+        isError,
+        error,
+        refetch,
+    } = useQuery<ScriptResponse>({
+        queryKey: ["script", scriptId],
+        queryFn: () => getScript(scriptId),
+        retry: (count, err: any) =>
+            ![401, 403, 404].includes(err?.status) && count < 2,
+        refetchOnWindowFocus: false,
+    });
 
-    const goBack = () => router.push("/dashboard/scripts");
+    /* -------------------------------
+       MUTATION (ANALYZE)
+    -------------------------------- */
+    const analyzeMutation = useMutation({
+        mutationFn: () => analyzeScript(scriptId),
+        onSuccess: (res) => {
+            setScenes(res.scenes || []);
+        },
+    });
 
-    const handleGenerateScenes = () => {
-        setIsGenerating(true);
-        setTimeout(() => {
-            setIsGenerating(false);
-            // Mock generation
-        }, 2000);
-    };
+    /* -------------------------------
+        MUTATION (GENERATE VIDEO)
+    -------------------------------- */
+    const generateVideoMutation = useMutation({
+        mutationFn: () => generateVideo(scriptId),
+        onSuccess: (res) => {
+            // Redirect to video detail page
+            if (res?.video_id) {
+                router.push(`/dashboard/videos/${res.video_id}`);
+            }
+        },
+    });
+
+    /* -------------------------------
+       SYNC DATA
+    -------------------------------- */
+    useEffect(() => {
+        if (!data) return;
+        setTitle(data.title);
+        setContent(data.content);
+    }, [data]);
+
+    /* -------------------------------
+       ERROR STATES
+    -------------------------------- */
+    if (isLoading) {
+        return (
+            <CenteredMessage
+                title="Loading script…"
+                loading
+            />
+        );
+    }
+
+    if (isError) {
+        const status = (error as any)?.status;
+
+        if (status === 401)
+            return <CenteredMessage title="Unauthorized" />;
+        if (status === 403)
+            return <CenteredMessage title="Access Denied" />;
+        if (status === 404)
+            return <CenteredMessage title="Script Not Found" />;
+
+        return (
+            <CenteredMessage
+                title="Server Error"
+                action={{ label: "Retry", onClick: refetch }}
+            />
+        );
+    }
+
+    if (!data) {
+        return (
+            <CenteredMessage
+                title="No Data"
+                description="Script data could not be loaded."
+            />
+        );
+    }
+
+    const {
+        can_edit,
+        can_analyze,
+        can_generate_video,
+    } = data;
+
+    /* ===================================================
+       RENDER
+    =================================================== */
 
     return (
         <div className="h-[calc(100vh-5rem)] flex flex-col gap-4">
             {/* HEADER */}
             <div className="flex items-center justify-between border-b pb-4">
                 <div className="flex items-center gap-4">
-                    <Button variant="ghost" size="sm" onClick={goBack}>
+                    <Button variant="ghost" size="sm" onClick={() => router.push("/dashboard/scripts")}>
                         <ChevronLeft className="h-4 w-4 mr-1" /> Back
                     </Button>
 
-                    <div className="h-6 w-[1px] bg-border" />
-
                     <Input
                         value={title}
+                        disabled={!can_edit}
                         onChange={(e) => setTitle(e.target.value)}
-                        className="text-lg font-bold border-none shadow-none focus-visible:ring-0 px-0 w-[300px] h-auto"
+                        className="text-lg font-bold border-none px-0 w-[320px]"
                     />
                 </div>
 
-                <div className="flex items-center gap-2">
-                    <span className="text-xs text-muted-foreground mr-2">
-                        Auto-saved 2m ago
-                    </span>
-
-                    <Button variant="outline" size="sm">
+                <div className="flex gap-2">
+                    <Button variant="outline" size="sm" disabled={!can_edit}>
                         <Save className="h-4 w-4 mr-2" /> Save Draft
                     </Button>
 
-                    <Button size="sm" className="bg-primary hover:bg-primary/90">
-                        <Play className="h-4 w-4 mr-2" /> Generate Video
+                    <Button
+                        size="sm"
+                        disabled={generateVideoMutation.isPending}
+                        onClick={() => generateVideoMutation.mutate()}
+                    >
+                        <Play className="h-4 w-4 mr-2" />
+                        {generateVideoMutation.isPending ? "Starting…" : "Generate Video"}
                     </Button>
+
                 </div>
             </div>
 
-            {/* MAIN EDITOR GRID */}
+            {/* MAIN GRID */}
             <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-6 min-h-0">
-
-                {/* LEFT SIDE — Script Text */}
-                <div className="flex flex-col h-full">
-                    <Label className="mb-2 font-medium text-muted-foreground">
+                {/* SCRIPT */}
+                <div className="flex flex-col">
+                    <Label className="mb-2 text-muted-foreground">
                         Script Content
                     </Label>
 
-                    <Card className="flex-1 border-border/50 shadow-sm">
-                        <CardContent className="p-0 flex-1 flex flex-col">
+                    <Card className="flex-1">
+                        <CardContent className="p-0 flex flex-col h-full">
                             <Textarea
-                                value={scriptBody}
-                                onChange={(e) => setScriptBody(e.target.value)}
-                                className="flex-1 resize-none border-0 focus-visible:ring-0 p-6 text-base leading-relaxed font-mono"
-                                placeholder="Start typing your script..."
+                                value={content}
+                                disabled={!can_edit}
+                                onChange={(e) => setContent(e.target.value)}
+                                className="flex-1 resize-none p-6 font-mono text-sm"
                             />
 
-                            {/* FOOTER BAR */}
-                            <div className="p-2 border-t bg-muted/10 flex justify-between items-center text-xs text-muted-foreground">
-                                <div className="flex gap-4">
-                                    <span>{scriptBody.length} chars</span>
-                                    <span>~{Math.ceil(scriptBody.length / 15)} sec duration</span>
-                                </div>
+                            <div className="p-2 border-t flex justify-between text-xs">
+                                <span>{content.length} chars</span>
 
                                 <Button
                                     variant="ghost"
                                     size="sm"
-                                    className="h-6 text-xs"
-                                    onClick={handleGenerateScenes}
+                                    disabled={!can_analyze || analyzeMutation.isPending}
+                                    onClick={() => analyzeMutation.mutate()}
                                 >
-                                    <Wand2 className="h-3 w-3 mr-1" /> Analyze & Split
+                                    <Wand2 className="h-3 w-3 mr-1" />
+                                    {analyzeMutation.isPending
+                                        ? "Analyzing…"
+                                        : "Analyze & Split"}
                                 </Button>
                             </div>
                         </CardContent>
                     </Card>
                 </div>
 
-                {/* RIGHT SIDE — Scenes + Settings */}
-                <div className="flex flex-col h-full min-h-0">
-                    <Tabs defaultValue="scenes" className="flex-1 flex flex-col">
-                        <div className="flex items-center justify-between mb-2">
-                            <Label className="font-medium text-muted-foreground">
-                                Output Config
-                            </Label>
+                {/* SCENES */}
+                <div className="flex flex-col">
+                    <Label className="mb-2 text-muted-foreground">
+                        Generated Scenes
+                    </Label>
 
-                            <TabsList className="h-8">
-                                <TabsTrigger value="scenes" className="text-xs">
-                                    Scenes
-                                </TabsTrigger>
-                                <TabsTrigger value="settings" className="text-xs">
-                                    Settings
-                                </TabsTrigger>
-                            </TabsList>
-                        </div>
+                    <Card className="flex-1">
+                        <ScrollArea className="h-full">
+                            <CardContent className="space-y-4 p-4">
+                                {scenes.length === 0 && (
+                                    <div className="text-center text-sm text-muted-foreground py-12">
+                                        No scenes generated yet
+                                    </div>
+                                )}
 
-                        {/* SCENES TAB */}
-                        <TabsContent value="scenes" className="flex-1 min-h-0 mt-0">
-                            <ScrollArea className="h-full pr-4">
-                                <div className="space-y-4 pb-4">
-                                    {scenes.map((scene, index) => (
-                                        <Card
-                                            key={scene.id}
-                                            className="border-border/50 group hover:border-primary/30 transition-colors"
-                                        >
-                                            <CardContent className="p-4 space-y-3">
-                                                {/* Header */}
-                                                <div className="flex justify-between items-start">
-                                                    <div className="flex items-center gap-2">
-                                                        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-xs font-medium text-primary">
-                                                            {index + 1}
-                                                        </span>
-
-                                                        <span className="text-xs text-muted-foreground font-mono flex items-center">
-                                                            <Clock className="h-3 w-3 mr-1" />{" "}
-                                                            {scene.duration}s
-                                                        </span>
-                                                    </div>
-
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="icon"
-                                                        className="h-6 w-6 opacity-0 group-hover:opacity-100"
-                                                    >
-                                                        <ImageIcon className="h-3 w-3" />
-                                                    </Button>
-                                                </div>
-
-                                                {/* Script Text */}
-                                                <p className="text-sm font-medium leading-snug">
-                                                    "{scene.text}"
-                                                </p>
-
-                                                {/* Visual Prompt */}
-                                                <div className="bg-muted/30 p-2 rounded border text-xs text-muted-foreground flex gap-2 items-start">
-                                                    <Wand2 className="h-3 w-3 shrink-0 mt-0.5 text-primary" />
-                                                    <span>Visual Prompt: {scene.visual}</span>
-                                                </div>
-                                            </CardContent>
-                                        </Card>
-                                    ))}
-
-                                    <Button
-                                        variant="outline"
-                                        className="w-full border-dashed border-2 h-12 text-muted-foreground hover:text-primary hover:border-primary/50"
+                                {scenes.map((scene) => (
+                                    <div
+                                        key={scene.index}
+                                        className="border rounded-md p-3 space-y-2"
                                     >
-                                        <Plus className="h-4 w-4 mr-2" /> Add Scene Manually
-                                    </Button>
-                                </div>
-                            </ScrollArea>
-                        </TabsContent>
-
-                        {/* SETTINGS TAB */}
-                        <TabsContent value="settings" className="mt-0">
-                            <Card>
-                                <CardContent className="p-6 space-y-6">
-                                    {/* Voice */}
-                                    <div className="space-y-2">
-                                        <Label>Voiceover</Label>
-                                        <div className="flex gap-2 items-center p-3 border rounded-md cursor-pointer hover:border-primary transition-colors">
-                                            <div className="h-10 w-10 rounded-full bg-purple-100 flex items-center justify-center text-purple-600">
-                                                <Mic className="h-5 w-5" />
-                                            </div>
-
-                                            <div className="flex-1">
-                                                <div className="font-medium text-sm">
-                                                    Adam (Deep, Narrator)
-                                                </div>
-                                                <div className="text-xs text-muted-foreground">
-                                                    English, Male, Serious
-                                                </div>
-                                            </div>
-
-                                            <Button variant="ghost" size="sm">
-                                                Change
-                                            </Button>
+                                        <div className="flex justify-between text-xs text-muted-foreground">
+                                            <span>Scene {scene.index}</span>
+                                            <span className="flex items-center gap-1">
+                                                <Clock className="h-3 w-3" />
+                                                {scene.duration_sec}s
+                                            </span>
                                         </div>
+
+                                        <p className="text-sm font-medium">
+                                            “{scene.narration}”
+                                        </p>
+
+                                        {scene.visual_prompt && (
+                                            <p className="text-xs text-muted-foreground">
+                                                🎥 {scene.visual_prompt}
+                                            </p>
+                                        )}
                                     </div>
-
-                                    {/* Background Music */}
-                                    <div className="space-y-2">
-                                        <Label>Background Music</Label>
-                                        <div className="flex gap-2 items-center p-3 border rounded-md cursor-pointer hover:border-primary transition-colors">
-                                            <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600">
-                                                <Play className="h-5 w-5" />
-                                            </div>
-
-                                            <div className="flex-1">
-                                                <div className="font-medium text-sm">Cinematic Rise</div>
-                                                <div className="text-xs text-muted-foreground">
-                                                    Ambient, Suspense
-                                                </div>
-                                            </div>
-
-                                            <Button variant="ghost" size="sm">
-                                                Change
-                                            </Button>
-                                        </div>
-                                    </div>
-                                </CardContent>
-                            </Card>
-                        </TabsContent>
-                    </Tabs>
+                                ))}
+                            </CardContent>
+                        </ScrollArea>
+                    </Card>
                 </div>
             </div>
         </div>

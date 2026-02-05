@@ -12,17 +12,17 @@ from dotenv import load_dotenv
 # Routes
 from app.routes import auth_route, scripts, voices, videos, dashboard
 
-# Job processor functions (new architecture)
-from app.services.video_job_service import (
+# ✅ SINGLE SOURCE OF TRUTH — scheduler logic
+from app.scripts.run_scheduler import (
     process_queued_jobs,
-    process_running_jobs
+    process_running_jobs,
 )
 
 # Load environment variables
 load_dotenv()
 
 # ==============================================================
-#  LOGGING CONFIGURATION
+# LOGGING CONFIGURATION
 # ==============================================================
 
 LOG_DIR = "logs"
@@ -31,36 +31,38 @@ os.makedirs(LOG_DIR, exist_ok=True)
 # --- App Logger ---
 app_logger = logging.getLogger("app_logger")
 app_logger.setLevel(logging.INFO)
+
 app_handler = RotatingFileHandler(
     os.path.join(LOG_DIR, "app.log"),
     maxBytes=5_000_000,
     backupCount=5,
-    encoding="utf-8"
+    encoding="utf-8",
 )
-app_formatter = logging.Formatter("[%(asctime)s] [%(levelname)s] %(message)s")
-app_handler.setFormatter(app_formatter)
+formatter = logging.Formatter("[%(asctime)s] [%(levelname)s] %(message)s")
+app_handler.setFormatter(formatter)
 app_logger.addHandler(app_handler)
 
 # --- Scheduler Logger ---
 scheduler_logger = logging.getLogger("scheduler_logger")
 scheduler_logger.setLevel(logging.INFO)
+
 scheduler_handler = RotatingFileHandler(
     os.path.join(LOG_DIR, "scheduler.log"),
     maxBytes=5_000_000,
     backupCount=5,
-    encoding="utf-8"
+    encoding="utf-8",
 )
-scheduler_handler.setFormatter(app_formatter)
+scheduler_handler.setFormatter(formatter)
 scheduler_logger.addHandler(scheduler_handler)
 
-# --- Console Logging for Development ---
+# --- Console Logging ---
 console_handler = logging.StreamHandler()
-console_handler.setFormatter(app_formatter)
+console_handler.setFormatter(formatter)
 app_logger.addHandler(console_handler)
 scheduler_logger.addHandler(console_handler)
 
 # ==============================================================
-#  APSCHEDULER SETUP USING FASTAPI LIFESPAN
+# APSCHEDULER SETUP (CRON-DRIVEN)
 # ==============================================================
 
 scheduler = BackgroundScheduler()
@@ -68,56 +70,56 @@ scheduler = BackgroundScheduler()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
 
-    cron_expr = os.getenv("VIDEO_JOB_CRON", "*/1 * * * *")  # Every 1 minute
+    cron_expr = os.getenv("VIDEO_JOB_CRON", "*/1 * * * *")  # every 1 minute
     trigger = CronTrigger.from_crontab(cron_expr)
 
-    # Add scheduler job only once
     if not scheduler.get_jobs():
         scheduler.add_job(
-            lambda: run_job_cycle(),
-            trigger,
-            id="video_job_cycle",
-            replace_existing=True
+            func=run_job_cycle,
+            trigger=trigger,
+            id="video_job_scheduler",
+            replace_existing=True,
         )
         scheduler.start()
 
-        scheduler_logger.info(f"🕒 Video Job Scheduler started (cron: {cron_expr})")
-        app_logger.info(f"✅ FastAPI startup complete. Scheduler running every {cron_expr}")
+        scheduler_logger.info(
+            f"🕒 Video Job Scheduler started (cron: {cron_expr})"
+        )
+        app_logger.info("✅ FastAPI startup complete")
 
-    yield  # FastAPI runs here
+    yield
 
-    # Shutdown logic
     try:
         scheduler.shutdown(wait=False)
-        scheduler_logger.info("🛑 Scheduler stopped gracefully.")
+        scheduler_logger.info("🛑 Scheduler stopped gracefully")
     except Exception as e:
         scheduler_logger.error(f"⚠️ Scheduler shutdown error: {e}")
 
-
 # ==============================================================
-#  JOB CYCLE (queued + running)
+# JOB CYCLE — DELEGATED TO run_scheduler.py
 # ==============================================================
 
 def run_job_cycle():
-    """Runs both phases: submit queued → poll running."""
+    """
+    ONE authoritative scheduler cycle.
+    """
     try:
         scheduler_logger.info("🔵 Scheduler cycle started")
-        process_queued_jobs(limit=5)
-        process_running_jobs(limit=5)
+        process_queued_jobs()
+        process_running_jobs()
         scheduler_logger.info("🟢 Scheduler cycle completed")
     except Exception as e:
-        scheduler_logger.error(f"❌ Scheduler cycle error: {e}")
-
+        scheduler_logger.error(f"❌ Scheduler cycle error: {e}", exc_info=True)
 
 # ==============================================================
-#  FASTAPI INITIALIZATION
+# FASTAPI APP
 # ==============================================================
 
 app = FastAPI(
     title="AI YouTube Automation API",
-    lifespan=lifespan
+    lifespan=lifespan,
 )
-print(os.getenv("FRONTEND_URL"))
+
 ALLOWED_ORIGINS = [
     os.getenv("FRONTEND_URL"),  # frontend
     # "https://yourdomain.com"  # production later

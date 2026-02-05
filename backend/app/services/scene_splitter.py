@@ -1,20 +1,13 @@
 import os
 import json
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Dict, Any
 
-# Hardcoded category map
-CATEGORY_MAP = {
-    1: "Sci-Fi",
-    2: "Horror",
-    3: "Tech",
-    4: "ASMR",
-    5: "Storytelling",
-}
+WORDS_PER_SECOND = 2.2  # realistic narration speed
 
 # ---------------------------------------------------------
-# Folder helper (patched in tests)
+# Folder helper
 # ---------------------------------------------------------
 def _ensure_scene_folder(script_id: int) -> str:
     base = f"assets/videos/scenes/{script_id}"
@@ -22,121 +15,182 @@ def _ensure_scene_folder(script_id: int) -> str:
     return base
 
 # ---------------------------------------------------------
-# Simple prompt_json builder (internal)
+# Safe JSON loader
+# ---------------------------------------------------------
+def _safe_load_json(value) -> Dict[str, Any]:
+    if not value:
+        return {}
+    if isinstance(value, dict):
+        return value
+    try:
+        return json.loads(value)
+    except Exception:
+        return {}
+
+# ---------------------------------------------------------
+# Build unified prompt_json (LOCKED)
 # ---------------------------------------------------------
 def _build_prompt_json(script) -> Dict[str, Any]:
+    parsed = _safe_load_json(script.parsed_json)
+
     return {
         "title": script.title,
-        "description": script.description or "",
-        "content": script.content or "",
-        "tone": getattr(script, "tone", "default"),
+        "description": (
+            parsed.get("description")
+            or getattr(script, "description", "")
+            or ""
+        ),
+        "style": parsed.get("style", {}),
+        "visual": parsed.get("visual", {}),
+        "audio": parsed.get("audio", {}),
+        "generation": parsed.get("generation", {}),
         "language": getattr(script, "language", "English"),
-        "keywords": [],
+        "tone": getattr(script, "tone", "neutral"),
     }
 
 # ---------------------------------------------------------
-# Split text into rough semantic chunks (fallback mode)
+# Semantic text splitter (NON-ASMR)
 # ---------------------------------------------------------
 def _semantic_split(content: str) -> List[str]:
-    if not content.strip():
-        return [""]
+    if not content or not content.strip():
+        return []
 
-    # Basic splitter using punctuation
-    chunks = re.split(r"[.!?]\s+", content)
-    chunks = [c.strip() for c in chunks if c.strip()]
+    chunks = re.split(r"[.!?]\s+", content.replace("\n", " "))
+    chunks = [c.strip() for c in chunks if len(c.strip()) >= 20]
 
-    # Guarantee at least 1
-    return chunks if chunks else [""]
+    return chunks or [content.strip()]
 
 # ---------------------------------------------------------
-# Build semantic scene descriptors
+# Build narrative scenes (LOCKED SCHEMA)
 # ---------------------------------------------------------
-def _build_semantic_scenes(chunks: List[str]) -> List[Dict[str, Any]]:
-    scenes = []
-    for i, chunk in enumerate(chunks, start=1):
-        scenes.append({
-            "index": i,
-            "title": f"Scene {i}",
-            "summary": chunk[:120],
-            "emotion": "neutral",
-            "prompt": {
-                "scene_title": f"Scene {i}",
-                "description": chunk,
-            }
-        })
-    return scenes
-
-# ---------------------------------------------------------
-# Build ASMR duration-based scenes
-# ---------------------------------------------------------
-def _build_asmr_scenes(voice_length_seconds: int) -> List[Dict[str, Any]]:
-    num_scenes = max(1, voice_length_seconds // 6)
-
-    variations = ["zoom_in", "camera_sweep", "ambient"]
+def _build_semantic_scenes(
+    chunks: List[str],
+    visual_env: str,
+    tone: str,
+) -> List[Dict[str, Any]]:
     scenes = []
 
-    for i in range(1, num_scenes + 1):
+    for idx, narration in enumerate(chunks, start=1):
+        word_count = len(narration.split())
+        duration_sec = max(4, int(word_count / WORDS_PER_SECOND))
+
         scenes.append({
-            "index": i,
-            "variation": variations[(i - 1) % len(variations)],
-            "prompt": {
-                "scene": i,
-                "style": "asmr",
-                "direction": variations[(i - 1) % len(variations)],
-            }
+            "index": idx,
+            "narration": narration,
+            "duration_sec": duration_sec,
+            "emotion": tone or "neutral",
+            "pacing": "steady",
+            "visual_prompt": f"{visual_env}, cinematic framing, scene {idx}",
         })
 
     return scenes
 
 # ---------------------------------------------------------
-# Main Scene Splitter
+# Build ASMR scenes (duration-based, LOCKED SCHEMA)
 # ---------------------------------------------------------
-def split_into_scenes(script, voice_length_seconds):
+def _build_asmr_scenes(
+    voice_length_seconds: int,
+    visual_env: str,
+) -> List[Dict[str, Any]]:
+    SCENE_DURATION = 6
+    num_scenes = max(1, voice_length_seconds // SCENE_DURATION)
+
+    variations = [
+        "slow zoom",
+        "camera drift",
+        "macro texture",
+        "ambient stillness",
+    ]
+
+    scenes = []
+
+    for idx in range(1, num_scenes + 1):
+        scenes.append({
+            "index": idx,
+            "narration": "",
+            "duration_sec": SCENE_DURATION,
+            "emotion": "calm",
+            "pacing": "slow",
+            "visual_prompt": (
+                f"{visual_env}, {variations[(idx - 1) % len(variations)]}"
+            ),
+        })
+
+    return scenes
+
+# ---------------------------------------------------------
+# MAIN ENTRY (LOCKED + FIXED)
+# ---------------------------------------------------------
+def split_into_scenes(script, voice_length_seconds: int):
     """
-    Unified simplified API:
-    - script: Script-like object
-    - voice_length_seconds: total TTS duration
+    Deterministic scene splitter.
+
+    Returns:
+    - scenes (LOCKED schema list)
+    - manifest_path (str)
     """
 
     content = script.content or ""
-    category_name = CATEGORY_MAP.get(script.category_id, "Unknown")
 
-    # Auto-build prompt JSON internally
+    # ✅ CORRECT CATEGORY RESOLUTION (NO IDS)
+    category_name = ""
+    if getattr(script, "category", None) and script.category.name:
+        category_name = script.category.name.lower()
+
+    is_asmr = "asmr" in category_name
+
     prompt_json = _build_prompt_json(script)
 
-    # ---------------------------------------------
-    # ASMR path
-    # ---------------------------------------------
-    if category_name == "ASMR":
-        scenes = _build_asmr_scenes(voice_length_seconds)
+    visual_env = (
+        prompt_json.get("visual", {}).get("environment")
+        or "cinematic environment"
+    )
 
+    tone = (
+        prompt_json.get("generation", {}).get("tone")
+        or getattr(script, "tone", "neutral")
+    )
+
+    # -------------------------------------------------
+    # Scene generation path
+    # -------------------------------------------------
+    if is_asmr:
+        scenes = _build_asmr_scenes(
+            voice_length_seconds=voice_length_seconds,
+            visual_env=visual_env,
+        )
     else:
-        # Semantic fallback mode (no OpenAI)
         chunks = _semantic_split(content)
-        scenes = _build_semantic_scenes(chunks)
+        scenes = _build_semantic_scenes(
+            chunks=chunks,
+            visual_env=visual_env,
+            tone=tone,
+        )
 
-    # ---------------------------------------------
-    # DEV/PROD scene limit
-    # ---------------------------------------------
+    # -------------------------------------------------
+    # ENV LIMIT
+    # -------------------------------------------------
     env = os.getenv("AIYT_ENV", "DEV").upper()
-    max_scenes = 5 if env == "DEV" else 7
+    max_scenes = 5 if env == "DEV" else 8
     scenes = scenes[:max_scenes]
 
-    # ---------------------------------------------
-    # Write manifest
-    # ---------------------------------------------
+    # -------------------------------------------------
+    # MANIFEST WRITE (non-DB)
+    # -------------------------------------------------
     folder = _ensure_scene_folder(script.id)
     manifest_path = os.path.join(folder, "manifest.json")
 
     manifest = {
         "script_id": script.id,
-        "category": category_name,
-        "generated_at": datetime.utcnow().isoformat(),
+        "category": script.category.name if script.category else "Unknown",
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "env": env,
+        "scene_count": len(scenes),
         "scenes": scenes,
         "prompt_json": prompt_json,
     }
 
     with open(manifest_path, "w", encoding="utf-8") as f:
-        json.dump(manifest, f, indent=2)
+        json.dump(manifest, f, indent=2, ensure_ascii=False)
 
     return scenes, manifest_path

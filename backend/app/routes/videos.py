@@ -10,7 +10,7 @@ from app.services.orchestrator.scene_job_orchestrator import SceneJobOrchestrato
 
 router = APIRouter(prefix="/videos")
 
-VALID_PROVIDERS = {"MINIMAX", "VEO", "SORA", "KLING", "RUNWAY"}
+VALID_PROVIDERS = {"MINIMAX", "VEO", "SORA", "KLING", "RUNWAY", "SILICONFLOW"}
 
 
 # -------------------------------------------------------------
