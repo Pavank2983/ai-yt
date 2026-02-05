@@ -19,6 +19,7 @@ export type ProviderKey =
     | "RUNWAY"
     | "SORA"
     | "VEO"
+    | "SILICONFLOW"
     | string;
 
 export interface AdminActiveJob {

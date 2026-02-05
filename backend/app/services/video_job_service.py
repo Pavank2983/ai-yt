@@ -16,8 +16,11 @@ scheduler_logger = logging.getLogger("scheduler_logger")
 # -------------------------------------------------------------
 def process_queued_jobs(limit: int = 5):
     """
-    Finds all queued jobs and submits them to their provider.
-    This is NOT the scheduler; only a helper for manual triggering.
+    Submits ONLY executable scene jobs to AI providers.
+    Skips:
+      - Orchestrator marker jobs
+      - TTS jobs
+      - Jobs without provider
     """
 
     db: Session = SessionLocal()
@@ -35,28 +38,67 @@ def process_queued_jobs(limit: int = 5):
             scheduler_logger.info("🟢 No queued jobs found.")
             return
 
-        scheduler_logger.info(f"⚙️ Submitting {len(queued)} queued job(s)...")
+        scheduler_logger.info(f"⚙️ Evaluating {len(queued)} queued job(s)...")
 
         for job in queued:
             try:
-                # Mark job as running (submit stage)
+                # -------------------------------------------------
+                # 🚫 Skip orchestration marker jobs
+                # -------------------------------------------------
+                if (
+                    not job.is_tts
+                    and job.scene_index is None
+                    and job.provider is None
+                ):
+                    scheduler_logger.info(
+                        f"⏭️ Skipping orchestration marker job {job.id}"
+                    )
+                    continue
+
+                # -------------------------------------------------
+                # 🚫 Skip TTS jobs (handled elsewhere)
+                # -------------------------------------------------
+                if job.is_tts:
+                    scheduler_logger.info(
+                        f"⏭️ Skipping TTS job {job.id} (handled by TTS worker)"
+                    )
+                    continue
+
+                # -------------------------------------------------
+                # 🚫 Skip invalid jobs
+                # -------------------------------------------------
+                if job.scene_index is None or not job.provider:
+                    scheduler_logger.warning(
+                        f"⚠️ Skipping invalid VideoJob {job.id} "
+                        f"(scene_index={job.scene_index}, provider={job.provider})"
+                    )
+                    continue
+
+                # -------------------------------------------------
+                # 🚀 Submit SCENE JOB to AI provider
+                # -------------------------------------------------
+                scheduler_logger.info(
+                    f"🚀 Submitting Scene Job {job.id} | "
+                    f"scene={job.scene_index} | provider={job.provider}"
+                )
+
                 job.status = JobStatus.running
                 job.started_at = datetime.now(timezone.utc)
                 job.updated_at = datetime.now(timezone.utc)
                 db.commit()
 
-                scheduler_logger.info(
-                    f"🚀 Submitting Job {job.id} | provider={job.provider}"
-                )
-
                 result = submit_job_to_provider(job.id)
 
                 scheduler_logger.info(
-                    f"📨 Provider accepted Job {job.id} → task_id={result.get('task_id')}"
+                    f"📨 Provider accepted Job {job.id} "
+                    f"(task_id={result.get('task_id')})"
                 )
 
             except Exception as e:
-                scheduler_logger.error(f"❌ Error submitting Job {job.id}: {e}")
+                scheduler_logger.error(
+                    f"❌ Error submitting Job {job.id}: {e}",
+                    exc_info=True
+                )
                 job.status = JobStatus.failed
                 job.error_log = str(e)
                 job.updated_at = datetime.now(timezone.utc)
@@ -66,7 +108,7 @@ def process_queued_jobs(limit: int = 5):
         db.close()
 
 # -------------------------------------------------------------
-# SCAN RUNNING JOBS → POLL PROVIDER (MiniMax)
+# SCAN RUNNING JOBS → POLL PROVIDER
 # -------------------------------------------------------------
 def process_running_jobs(limit: int = 5):
     """
@@ -93,7 +135,7 @@ def process_running_jobs(limit: int = 5):
 
         for job in running:
             scheduler_logger.info(
-                f"🔍 Polling Job {job.id} | provider={job.provider} | task_id={job.task_id}"
+                f"🔍 Polling Job {job.id} | provider={job.provider} | task_id={job.task_id} | file=Video_Job_Service.py"
             )
 
             try:

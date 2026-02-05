@@ -12,6 +12,12 @@ from sqlalchemy.orm import Session
 from app.models.script import Script
 from app.models.voice import Voice
 
+# 🔽 ADD THESE IMPORTS AT TOP
+from app.models.video_job import VideoJob, JobStatus
+from app.services.orchestrator.scene_job_orchestrator import SceneJobOrchestrator
+from app.models.video import Video
+
+
 # ─────────────────────────────────────────────
 # SETUP & ENV
 # ─────────────────────────────────────────────
@@ -406,3 +412,71 @@ def generate_multivoice_for_script(db: Session, script: Script, provider: str = 
         "segments": segments,
         "total_duration": merged_duration
     }
+
+def run_tts_video_job(db: Session, video_job_id: int):
+    """
+    Executes a TTS VideoJob.
+    On success → creates scene jobs.
+    """
+
+    job = (
+        db.query(VideoJob)
+        .filter(VideoJob.id == video_job_id, VideoJob.is_tts == True)
+        .first()
+    )
+
+    if not job:
+        raise ValueError("TTS VideoJob not found")
+
+    script = db.query(Script).filter(Script.id == job.script_id).first()
+    video = db.query(Video).filter(Video.id == job.video_id).first()
+
+    if not script or not video:
+        raise ValueError("Script or Video missing for TTS job")
+
+    job.status = JobStatus.running
+    job.started_at = datetime.now(UTC)
+    db.commit()
+
+    # -----------------------------------------
+    # 🔊 Generate voice
+    # -----------------------------------------
+    meta = json.loads(job.meta or "{}")
+
+    result = generate_voice_for_script(
+        db=db,
+        script=script,
+        provider=meta.get("provider"),
+        voice_name=meta.get("voice"),
+    )
+
+    if not result.get("success"):
+        job.status = JobStatus.failed
+        job.error_log = result.get("error", "TTS failed")
+        job.completed_at = datetime.now(UTC)
+        db.commit()
+        return
+
+    # -----------------------------------------
+    # ✅ TTS SUCCESS
+    # -----------------------------------------
+    job.status = JobStatus.success
+    job.completed_at = datetime.now(UTC)
+    db.commit()
+
+    # -----------------------------------------
+    # 🎬 CREATE SCENE JOBS NOW
+    # -----------------------------------------
+    scene_orchestrator = SceneJobOrchestrator(
+        db=db,
+        script_id=script.id,
+        scenes=script.scene_timings,
+        voice_length_seconds=script.audio_duration_seconds,
+        provider=os.getenv("AI_VIDEO_PROVIDER", "MINIMAX"),
+        quality="STANDARD",
+    )
+
+    scene_orchestrator.run()
+
+    video.status = "rendering"
+    db.commit()

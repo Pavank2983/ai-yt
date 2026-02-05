@@ -13,6 +13,9 @@ __pycache__/
 
 # Output folders
 output/
+
+assets/
+
 assets/music/
 assets/images/
 assets/voices/
