@@ -5,7 +5,7 @@ from app.db.database import get_db
 from app.models.script import Script
 from app.services.voice_generation_service import (
     generate_voice_for_script,
-    generate_multivoice_for_script
+    # generate_multivoice_for_script
 )
 from app.core.security import role_required
 from datetime import datetime, UTC
@@ -72,7 +72,9 @@ def generate_voice_endpoint(
     # Step 4️⃣ Perform voice generation
     try:
         if mode == "multi":
-            result = generate_multivoice_for_script(db=db, script=script)
+            result = None
+            raise HTTPException(status_code=501, detail="Multi-voice generation not implemented yet")
+            # result = generate_multivoice_for_script(db=db, script=script)
         else:
             result = generate_voice_for_script(db=db, script=script, provider=provider)
 

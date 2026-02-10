@@ -10,6 +10,9 @@ from app.models.user import User
 from datetime import datetime, timezone
 from app.models.video import Video, ApprovalStatus
 
+# ✅ NEW: canonical video status helper
+from app.services.video_status_service import derive_video_status
+
 from typing import List
 
 router = APIRouter(prefix="/dashboard")
@@ -52,11 +55,12 @@ def approve_video(
     if not video:
         raise HTTPException(status_code=404, detail="Video not found")
 
-    # Must be ready for review
-    if video.status != "ready_for_review":
+    # ✅ MUST be ready_for_review (derived, not stored)
+    derived_status = derive_video_status(video)
+    if derived_status != "ready_for_review":
         raise HTTPException(
             status_code=400,
-            detail=f"Video is not ready for review (status={video.status})",
+            detail=f"Video is not ready for review (status={derived_status})",
         )
 
     # Idempotent: already approved
@@ -93,11 +97,12 @@ def reject_video(
     if not video:
         raise HTTPException(status_code=404, detail="Video not found")
 
-    # Must be ready for review
-    if video.status != "ready_for_review":
+    # ✅ MUST be ready_for_review (derived, not stored)
+    derived_status = derive_video_status(video)
+    if derived_status != "ready_for_review":
         raise HTTPException(
             status_code=400,
-            detail=f"Video is not ready for review (status={video.status})",
+            detail=f"Video is not ready for review (status={derived_status})",
         )
 
     # Idempotent: already rejected
