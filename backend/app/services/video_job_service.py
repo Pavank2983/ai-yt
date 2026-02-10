@@ -142,20 +142,26 @@ def process_running_jobs(limit: int = 5):
                 result = process_running_job(job.id)
 
                 if result["status"] == "success":
-                    scheduler_logger.info(f"🎉 Job {job.id} completed successfully")
+                    scheduler_logger.info(
+                        f"🎉 Job {job.id} completed successfully"
+                    )
 
                 elif result["status"] == "processing":
-                    scheduler_logger.info(f"⏳ Job {job.id} still processing...")
+                    scheduler_logger.info(
+                        f"⏳ Job {job.id} still processing..."
+                    )
 
                 elif result["status"] == "failed":
-                    scheduler_logger.error(f"❌ Job {job.id} FAILED")
+                    scheduler_logger.error(
+                        f"❌ Job {job.id} reported failure (scheduler will decide)"
+                    )
 
             except Exception as e:
-                scheduler_logger.error(f"❌ Error polling Job {job.id}: {e}")
-                job.status = JobStatus.failed
-                job.error_log = str(e)
-                job.updated_at = datetime.now(timezone.utc)
-                db.commit()
+                # ⚠️ DO NOT mutate job status here
+                scheduler_logger.error(
+                    f"❌ Error polling Job {job.id}: {e}",
+                    exc_info=True
+                )
 
     finally:
         db.close()

@@ -13,6 +13,25 @@ from app.models.category import Category
 from app.services.orchestrator.scene_job_orchestrator import SceneJobOrchestrator
 
 logger = logging.getLogger("video_orchestrator")
+logger.setLevel(logging.INFO)
+
+if not logger.handlers:
+    os.makedirs("logs", exist_ok=True)
+
+    formatter = logging.Formatter(
+        "[%(asctime)s] [%(levelname)s] %(message)s"
+    )
+
+    # Console output
+    ch = logging.StreamHandler()
+    ch.setFormatter(formatter)
+
+    # File output
+    fh = logging.FileHandler("logs/video_orchestrator.log", encoding="utf-8")
+    fh.setFormatter(formatter)
+
+    logger.addHandler(ch)
+    logger.addHandler(fh)
 
 
 class VideoOrchestrator:

@@ -10,6 +10,8 @@ from app.db.database import SessionLocal
 from app.models.video_job import VideoJob, JobStatus
 from app.models.video import Video
 
+from app.utils import asset_paths
+
 # Provider imports
 from app.services.providers import (
     minimax_service,
@@ -81,7 +83,7 @@ def submit_job_to_provider(job_id: int) -> dict:
         if submit_result.get("meta"):
             job.meta = to_json(submit_result["meta"])
 
-        # Instant success providers (DEV / local only)
+        # Instant providers (DEV / local only)
         if submit_result.get("file_path"):
             job.status = JobStatus.success
             job.local_path = submit_result["file_path"]
@@ -130,9 +132,17 @@ def process_running_job(job_id: int) -> dict:
         if not job.task_id:
             raise Exception(f"Job {job.id} has no task_id")
 
-        logger.info(f"🔍 Polling provider {provider} for task_id={job.task_id} | file=Ai_Video_Service.py")
+        logger.info(
+            f"🔍 Polling provider={provider} | job_id={job.id} | task_id={job.task_id}"
+        )
 
         poll_result = provider_mod.poll(job)
+
+        # 🔎 LOG RAW PROVIDER RESPONSE (VERY IMPORTANT)
+        logger.info(
+            f"📡 Poll result | provider={provider} | job_id={job.id} | "
+            f"status={poll_result.get('status')} | payload={poll_result}"
+        )
 
         if poll_result.get("meta"):
             job.meta = to_json(poll_result["meta"])
@@ -141,62 +151,94 @@ def process_running_job(job_id: int) -> dict:
         # PROCESSING
         # -----------------------------
         if poll_result["status"] == "processing":
+            logger.info(
+                f"⏳ Still processing | provider={provider} | job_id={job.id}"
+            )
+
             job.attempts += 1
             job.updated_at = datetime.now(timezone.utc)
             db.commit()
+
             return {"status": "processing"}
 
         # -----------------------------
         # FAILED
         # -----------------------------
         if poll_result["status"] == "failed":
-            job.status = JobStatus.failed
-            job.error_log = "Provider returned failure"
-            job.completed_at = datetime.now(timezone.utc)
+            error_msg = poll_result.get(
+                "error",
+                poll_result.get("message", "Provider polling failed"),
+            )
+
+            logger.error(
+                f"❌ Provider FAILED | provider={provider} | job_id={job.id} | "
+                f"task_id={job.task_id} | error={error_msg}"
+            )
+
+            # ⚠️ Do NOT hard-fail here
+            job.error_log = error_msg
             job.updated_at = datetime.now(timezone.utc)
             db.commit()
-            return {"status": "failed"}
+
+            return {
+                "status": "failed",
+                "error": error_msg,
+            }
 
         # -----------------------------
         # SUCCESS
         # -----------------------------
-        logger.info(f"✅ Provider reports SUCCESS for job {job.id}")
+        logger.info(
+            f"✅ Provider SUCCESS | provider={provider} | job_id={job.id} | "
+            f"task_id={job.task_id}"
+        )
 
         # -----------------------------
-        # RETRIEVE FILE INFO (provider-specific)
+        # RETRIEVE FILE INFO
         # -----------------------------
         if provider == "MINIMAX":
             file_id = poll_result.get("file_id")
             if not file_id:
                 raise Exception("MiniMax success but no file_id")
 
+            logger.info(
+                f"📥 Retrieving MiniMax file | job_id={job.id} | file_id={file_id}"
+            )
+
             job.file_id = file_id
             db.commit()
 
             retrieve_result = provider_mod.retrieve(file_id)
             download_url = retrieve_result["download_url"]
-            filename = retrieve_result.get("filename", f"{provider}_{file_id}.mp4")
 
         elif provider == "SILICONFLOW":
+            logger.info(
+                f"📥 Retrieving SiliconFlow file | job_id={job.id} | task_id={job.task_id}"
+            )
+
             retrieve_result = provider_mod.retrieve(job)
             download_url = retrieve_result["download_url"]
-            filename = retrieve_result.get("filename", f"{provider}_{job.task_id}.mp4")
 
         else:
-            raise Exception(f"Retrieve logic not implemented for {provider}")
+            raise Exception(f"Retrieve not implemented for {provider}")
 
         # -----------------------------
-        # DOWNLOAD
+        # SCENE OUTPUT PATH
         # -----------------------------
-        final_path = f"assets/videos/{provider.lower()}_{job.task_id}.mp4"
+        script_id = job.script_id
+        scene_index = job.scene_index
+
+        scene_dir = asset_paths.scene_dir(script_id, scene_index)
+        os.makedirs(scene_dir, exist_ok=True)
+
+        final_path = os.path.join(scene_dir, "output.mp4")
+
+        logger.info(
+            f"⬇️ Downloading video | provider={provider} | job_id={job.id} | "
+            f"url={download_url} | output={final_path}"
+        )
+
         provider_mod.download(download_url, final_path)
-
-        # -----------------------------
-        # UPDATE VIDEO
-        # -----------------------------
-        video.file_url = final_path
-        video.status = "uploaded"
-        video.updated_at = datetime.now(timezone.utc)
 
         # -----------------------------
         # UPDATE JOB
@@ -209,25 +251,33 @@ def process_running_job(job_id: int) -> dict:
 
         db.commit()
 
-        logger.info(f"🎉 Job {job.id} completed → {final_path}")
+        logger.info(
+            f"🎉 Scene completed | job_id={job.id} | scene={scene_index} | "
+            f"path={final_path}"
+        )
 
         return {"status": "success", "file_path": final_path}
 
     except Exception as e:
         db.rollback()
-        logger.error(f"❌ Error processing running job {job_id}: {e}")
-        logger.debug(traceback.format_exc())
 
+        logger.error(
+            f"❌ Exception during polling | job_id={job_id} | error={e}",
+            exc_info=True,
+        )
+
+        # ⚠️ Do NOT hard-fail here
         try:
-            job.status = JobStatus.failed
             job.error_log = f"{type(e).__name__}: {str(e)}"
             job.updated_at = datetime.now(timezone.utc)
-            job.completed_at = datetime.now(timezone.utc)
             db.commit()
         except Exception:
             db.rollback()
 
-        return {"status": "failed", "error": str(e)}
+        return {
+            "status": "failed",
+            "error": str(e),
+        }
 
     finally:
         db.close()

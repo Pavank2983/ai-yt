@@ -5,32 +5,46 @@ from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional
 
 from sqlalchemy.orm import Session
+
 from app.db.database import SessionLocal
 from app.models.script import Script
 from app.models.video import Video
 from app.models.video_job import VideoJob, JobStatus
 
+from app.utils import asset_paths
+
 logger = logging.getLogger("scene_job_orchestrator")
 logger.setLevel(logging.INFO)
-if not logger.handlers:
-    ch = logging.StreamHandler()
-    ch.setFormatter(logging.Formatter("[%(asctime)s] [%(levelname)s] %(message)s"))
-    logger.addHandler(ch)
 
-SCENE_BASE = os.path.join("assets", "videos", "scenes")
-FINAL_BASE = os.path.join("assets", "videos", "final")
+if not logger.handlers:
+    os.makedirs("logs", exist_ok=True)
+
+    formatter = logging.Formatter(
+        "[%(asctime)s] [%(levelname)s] %(message)s"
+    )
+
+    # Console output
+    ch = logging.StreamHandler()
+    ch.setFormatter(formatter)
+
+    # File output
+    fh = logging.FileHandler("logs/scene_job_orchestrator.log", encoding="utf-8")
+    fh.setFormatter(formatter)
+
+    logger.addHandler(ch)
+    logger.addHandler(fh)
 
 DEFAULT_PROVIDER = os.getenv("AI_VIDEO_PROVIDER", "MINIMAX").upper()
 
-
 class SceneJobOrchestrator:
     """
-    Class-based orchestrator:
-      - create Video draft
-      - create scene files
-      - create VideoJob rows
-      - write manifest.json + merge_task.json
-      - optionally create VideoMergeJob row
+    Orchestrator responsibilities:
+    - deactivate previous active video (soft 1:1)
+    - create new Video draft
+    - create scene folders + prompt/meta files
+    - create VideoJob rows
+    - write manifest.json + merge_task.json
+    - create VideoMergeJob row
     """
 
     def __init__(
@@ -42,7 +56,6 @@ class SceneJobOrchestrator:
         provider: str,
         quality: str,
     ):
-        # DB lifecycle handling
         self.own_session = False
         if db is None:
             self.db = SessionLocal()
@@ -50,7 +63,6 @@ class SceneJobOrchestrator:
         else:
             self.db = db
 
-        # store params
         self.script_id = script_id
         self.scenes = scenes
         self.voice_length_seconds = voice_length_seconds
@@ -59,7 +71,6 @@ class SceneJobOrchestrator:
 
     # ------------------------------------------------------
     def run(self) -> Dict[str, Any]:
-        """Wrapper so videos.py can call orchestrator.run() cleanly"""
         return self.create_video_and_scene_jobs(
             script_id=self.script_id,
             scenes=self.scenes,
@@ -69,70 +80,24 @@ class SceneJobOrchestrator:
         )
 
     # ------------------------------------------------------
-    # Helpers
-    # ------------------------------------------------------
-
     def close(self):
         if self.own_session:
             self.db.close()
 
-    def _ensure_scene_folder(self, video_id: int) -> str:
-        folder = os.path.join(SCENE_BASE, str(video_id))
-        os.makedirs(folder, exist_ok=True)
-        return folder
-
-    def _ensure_final_folder(self, video_id: int) -> str:
-        folder = os.path.join(FINAL_BASE, str(video_id))
-        os.makedirs(folder, exist_ok=True)
-        return folder
+    # ------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------
 
     def _safe_json_dump(self, data: Any) -> str:
         return json.dumps(data, ensure_ascii=False, indent=2)
 
-    def _write_file(self, path: str, data: Any):
+    def _write_json(self, path: str, data: Any):
+        os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, "w", encoding="utf-8") as fh:
-            if isinstance(data, (dict, list)):
-                json.dump(data, fh, ensure_ascii=False, indent=2)
-            else:
-                fh.write(str(data))
-
-    def _try_create_merge_job_row(self, video_id: int, manifest: Dict[str, Any], db: Session):
-        """Create VideoMergeJob if table exists, else fallback to video.merge_status."""
-        try:
-            from app.models.video_merge_job import VideoMergeJob, MergeStatus
-
-            merge_row = VideoMergeJob(
-                video_id=video_id,
-                script_id=manifest.get("script_id"),
-                scene_count=manifest.get("scene_count"),
-                status=getattr(MergeStatus, "pending", "pending"),
-                quality=manifest.get("quality"),
-                created_at=datetime.now(timezone.utc),
-            )
-            db.add(merge_row)
-            db.commit()
-            db.refresh(merge_row)
-
-            logger.info(f"Created VideoMergeJob id={merge_row.id} for video={video_id}")
-            return merge_row.id
-
-        except Exception as e:
-            logger.warning(
-                f"VideoMergeJob create failed — fallback to video.merge_status. Reason: {e}"
-            )
-            try:
-                video = db.query(Video).filter(Video.id == video_id).first()
-                if video:
-                    setattr(video, "merge_status", "pending")
-                    setattr(video, "merge_requested_at", datetime.now(timezone.utc))
-                    db.add(video)
-                    db.commit()
-            except Exception:
-                db.rollback()
-            return None
+            json.dump(data, fh, ensure_ascii=False, indent=2)
 
     # ------------------------------------------------------
-    # Main function: Create Video + Scene Jobs
+    # Main
     # ------------------------------------------------------
 
     def create_video_and_scene_jobs(
@@ -145,16 +110,27 @@ class SceneJobOrchestrator:
     ) -> Dict[str, Any]:
 
         provider = (provider or DEFAULT_PROVIDER).upper()
-        created_job_ids = []
+        created_job_ids: List[int] = []
         merge_job_id = None
 
         try:
-            # 1) Load Script
-            script = self.db.query(Script).filter(Script.id == script_id).first()
+            # 1️⃣ Load Script
+            script = (
+                self.db.query(Script)
+                .filter(Script.id == script_id)
+                .first()
+            )
             if not script:
                 raise ValueError(f"Script {script_id} not found")
 
-            # 2) Create Video draft
+            # 2️⃣ Deactivate previous active video (Option 2)
+            self.db.query(Video).filter(
+                Video.script_id == script.id,
+                Video.is_active == True,
+            ).update({"is_active": False})
+            self.db.commit()
+
+            # 3️⃣ Create new Video draft
             new_video = Video(
                 script_id=script.id,
                 category_id=script.category_id,
@@ -164,39 +140,66 @@ class SceneJobOrchestrator:
                 generation_mode="AI",
                 status="rendering",
                 video_length=voice_length_seconds or 0,
+                is_active=True,
                 created_at=datetime.now(timezone.utc),
             )
 
             self.db.add(new_video)
             self.db.commit()
             self.db.refresh(new_video)
-            video_id = new_video.id
-            logger.info(f"🎬 Created Video draft id={video_id} for Script={script.id}")
 
-            # 3) Setup folders
-            scene_folder = self._ensure_scene_folder(video_id)
-            self._ensure_final_folder(video_id)
+            video_id = new_video.id
+            logger.info(f"🎬 Created Video id={video_id} for Script={script.id}")
+
+            # --------------------------------------------------
+            # 4️⃣ Folder setup (asset_paths only)
+            # --------------------------------------------------
+
+            scenes_root = asset_paths.scenes_dir(script.id)
+            merge_root = asset_paths.merge_dir(script.id)
+            final_root = asset_paths.final_dir(script.id)
+
+            os.makedirs(scenes_root, exist_ok=True)
+            os.makedirs(merge_root, exist_ok=True)
+            os.makedirs(final_root, exist_ok=True)
 
             manifest = {
                 "script_id": script.id,
                 "video_id": video_id,
                 "scene_count": len(scenes),
-                "duration_per_scene": scenes[0].get("duration") if scenes else None,
-                "scenes": [],
                 "quality": quality,
                 "created_at": datetime.now(timezone.utc).isoformat(),
+                "scenes": [],
             }
 
-            # 4) For each scene → write files + create VideoJob
+            # --------------------------------------------------
+            # 5️⃣ Scene jobs
+            # --------------------------------------------------
             for s in scenes:
+                raw_index = (
+                    s.get("scene_index")
+                    or s.get("index")
+                    or s.get("scene")        # ✅ NEW: analyzer output
+                )
 
-                # --- SCENE INDEX ---
-                scene_index = int(s.get("scene_index", s.get("index", 0)))
+                if raw_index is None:
+                    raise ValueError(f"Scene missing index: {s}")
 
-                # --- DURATION ---
-                duration = int(s.get("duration", 0))
+                # normalize to 0-based index
+                scene_index = int(raw_index) - 1 if int(raw_index) > 0 else int(raw_index)
 
-                # --- ROBUST SCENE PROMPT EXTRACTION ---
+                # --------------------------------------------------
+                # Duration
+                # --------------------------------------------------
+                duration = int(
+                    s.get("duration_sec")
+                    or s.get("duration")
+                    or 0
+                )
+
+                # --------------------------------------------------
+                # Prompt
+                # --------------------------------------------------
                 scene_prompt = (
                     s.get("scene_prompt")
                     or s.get("prompt")
@@ -204,20 +207,16 @@ class SceneJobOrchestrator:
                     or ""
                 )
 
-                # ensure string
                 if not isinstance(scene_prompt, str):
-                    try:
-                        scene_prompt = json.dumps(scene_prompt, ensure_ascii=False)
-                    except:
-                        scene_prompt = str(scene_prompt)
+                    scene_prompt = json.dumps(scene_prompt, ensure_ascii=False)
 
-                # --- PROMPT JSON ---
-                prompt_json = s.get("prompt_json") or s.get("prompt") or {}
+                prompt_json = s.get("prompt_json") or {}
 
-                # write prompt.json
-                prompt_path = os.path.join(scene_folder, f"{scene_index:02d}_prompt.json")
-                self._write_file(
-                    prompt_path,
+                scene_dir = asset_paths.scene_dir(script.id, scene_index)
+                os.makedirs(scene_dir, exist_ok=True)
+
+                self._write_json(
+                    os.path.join(scene_dir, "prompt.json"),
                     {
                         "scene_index": scene_index,
                         "duration": duration,
@@ -226,19 +225,15 @@ class SceneJobOrchestrator:
                     },
                 )
 
-                # write meta.json
-                meta_path = os.path.join(scene_folder, f"{scene_index:02d}_meta.json")
-                self._write_file(
-                    meta_path,
+                self._write_json(
+                    os.path.join(scene_dir, "meta.json"),
                     {
                         "scene_index": scene_index,
                         "duration": duration,
-                        "prompt_json": prompt_json,
                         "notes": s.get("notes", ""),
                     },
                 )
 
-                # create VideoJob row
                 job = VideoJob(
                     script_id=script.id,
                     video_id=video_id,
@@ -247,9 +242,9 @@ class SceneJobOrchestrator:
                     scene_index=scene_index,
                     meta=self._safe_json_dump(
                         {
+                            "scene_dir": scene_dir,
                             "scene_prompt": scene_prompt,
                             "prompt_json": prompt_json,
-                            "meta_path": meta_path,
                         }
                     ),
                     created_at=datetime.now(timezone.utc),
@@ -259,62 +254,77 @@ class SceneJobOrchestrator:
                 self.db.add(job)
                 self.db.commit()
                 self.db.refresh(job)
+
                 created_job_ids.append(job.id)
 
-                # update manifest
                 manifest["scenes"].append({
                     "scene_index": scene_index,
                     "job_id": job.id,
                     "status": job.status.value,
-                    "prompt_preview": scene_prompt[:300],
                 })
 
-            # 5) Save manifest.json
-            manifest_path = os.path.join(scene_folder, "manifest.json")
-            self._write_file(manifest_path, manifest)
+            # --------------------------------------------------
+            # 6️⃣ Write manifest + merge task
+            # --------------------------------------------------
 
-            # 6) Save merge_task.json
-            merge_task_path = os.path.join(scene_folder, "merge_task.json")
+            manifest_path = asset_paths.scenes_manifest_path(script.id)
+            self._write_json(manifest_path, manifest)
+
             merge_task = {
-                "video_id": video_id,
                 "script_id": script.id,
+                "video_id": video_id,
                 "scene_count": len(scenes),
-                "scenes": [
-                    {"index": sc["scene_index"], "job_id": sc["job_id"]}
-                    for sc in manifest["scenes"]
-                ],
                 "merge_mode": "crossfade",
                 "quality": quality,
-                "manifest_path": manifest_path,
                 "created_at": datetime.now(timezone.utc).isoformat(),
             }
-            self._write_file(merge_task_path, merge_task)
 
-            # 7) Create merge job
-            merge_job_id = self._try_create_merge_job_row(video_id, manifest, self.db)
+            merge_task_path = asset_paths.merge_task_path(script.id)
+            self._write_json(merge_task_path, merge_task)
 
-            # 8) Save manifest inside Video table
+            # --------------------------------------------------
+            # 7️⃣ Create merge job row
+            # --------------------------------------------------
+
             try:
-                new_video.assets_manifest = self._safe_json_dump(manifest)
-                self.db.add(new_video)
+                from app.models.video_merge_job import VideoMergeJob, MergeStatus
+
+                mj = VideoMergeJob(
+                    video_id=video_id,
+                    script_id=script.id,
+                    scene_count=len(scenes),
+                    status=MergeStatus.pending,
+                    quality=quality,
+                    created_at=datetime.now(timezone.utc),
+                )
+                self.db.add(mj)
                 self.db.commit()
-            except:
+                self.db.refresh(mj)
+                merge_job_id = mj.id
+
+            except Exception as e:
+                logger.warning(f"Merge job create failed: {e}")
                 self.db.rollback()
+
+            # --------------------------------------------------
+            # 8️⃣ Persist manifest in Video row
+            # --------------------------------------------------
+
+            new_video.assets_manifest = self._safe_json_dump(manifest)
+            self.db.add(new_video)
+            self.db.commit()
 
             return {
                 "video_id": video_id,
                 "job_ids": created_job_ids,
-                "manifest_path": manifest_path,
                 "scene_count": len(scenes),
+                "manifest_path": manifest_path,
                 "merge_job_id": merge_job_id,
             }
 
         except Exception as e:
-            logger.error(f"❌ Error in create_video_and_scene_jobs: {e}", exc_info=True)
-            try:
-                self.db.rollback()
-            except:
-                pass
+            logger.error(f"❌ SceneJobOrchestrator failed: {e}", exc_info=True)
+            self.db.rollback()
             raise
 
         finally:

@@ -4,15 +4,10 @@ import re
 from datetime import datetime, timezone
 from typing import List, Dict, Any
 
-WORDS_PER_SECOND = 2.2  # realistic narration speed
+# ✅ SINGLE SOURCE OF TRUTH
+from app.utils.asset_paths import scenes_dir
 
-# ---------------------------------------------------------
-# Folder helper
-# ---------------------------------------------------------
-def _ensure_scene_folder(script_id: int) -> str:
-    base = f"assets/videos/scenes/{script_id}"
-    os.makedirs(base, exist_ok=True)
-    return base
+WORDS_PER_SECOND = 2.2  # realistic narration speed
 
 # ---------------------------------------------------------
 # Safe JSON loader
@@ -86,7 +81,7 @@ def _build_semantic_scenes(
     return scenes
 
 # ---------------------------------------------------------
-# Build ASMR scenes (duration-based, LOCKED SCHEMA)
+# Build ASMR scenes (LOCKED SCHEMA)
 # ---------------------------------------------------------
 def _build_asmr_scenes(
     voice_length_seconds: int,
@@ -103,7 +98,6 @@ def _build_asmr_scenes(
     ]
 
     scenes = []
-
     for idx in range(1, num_scenes + 1):
         scenes.append({
             "index": idx,
@@ -119,7 +113,7 @@ def _build_asmr_scenes(
     return scenes
 
 # ---------------------------------------------------------
-# MAIN ENTRY (LOCKED + FIXED)
+# MAIN ENTRY (LOCKED)
 # ---------------------------------------------------------
 def split_into_scenes(script, voice_length_seconds: int):
     """
@@ -132,7 +126,7 @@ def split_into_scenes(script, voice_length_seconds: int):
 
     content = script.content or ""
 
-    # ✅ CORRECT CATEGORY RESOLUTION (NO IDS)
+    # ✅ CORRECT CATEGORY RESOLUTION
     category_name = ""
     if getattr(script, "category", None) and script.category.name:
         category_name = script.category.name.lower()
@@ -152,7 +146,7 @@ def split_into_scenes(script, voice_length_seconds: int):
     )
 
     # -------------------------------------------------
-    # Scene generation path
+    # Scene generation
     # -------------------------------------------------
     if is_asmr:
         scenes = _build_asmr_scenes(
@@ -175,9 +169,11 @@ def split_into_scenes(script, voice_length_seconds: int):
     scenes = scenes[:max_scenes]
 
     # -------------------------------------------------
-    # MANIFEST WRITE (non-DB)
+    # MANIFEST WRITE (script-scoped)
     # -------------------------------------------------
-    folder = _ensure_scene_folder(script.id)
+    folder = scenes_dir(script.id, video_id=0)
+    os.makedirs(folder, exist_ok=True)
+
     manifest_path = os.path.join(folder, "manifest.json")
 
     manifest = {

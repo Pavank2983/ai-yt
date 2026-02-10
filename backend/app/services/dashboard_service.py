@@ -7,6 +7,10 @@ from app.models.video_job import VideoJob, JobStatus
 from app.models.script import Script
 from app.models.user import User
 
+# ✅ NEW: canonical video status helper
+from app.services.video_status_service import derive_video_status
+
+
 def get_dashboard_metrics(db: Session, user: User):
     now = datetime.now(timezone.utc)
     month_start = datetime(now.year, now.month, 1, tzinfo=timezone.utc)
@@ -139,7 +143,8 @@ def get_dashboard_videos(db: Session, user: User, limit: int = 6):
         {
             "id": video.id,
             "title": video.title,
-            "status": video.status,  # draft | rendering | ready_for_review | uploaded | failed
+            # ✅ DERIVED STATUS (single source of truth)
+            "status": derive_video_status(video),
             "approval_status": video.approval_status,
             "file_url": video.file_url,
             "thumbnail_url": video.thumbnail_url,
@@ -150,4 +155,3 @@ def get_dashboard_videos(db: Session, user: User, limit: int = 6):
         }
         for video in videos
     ]
-

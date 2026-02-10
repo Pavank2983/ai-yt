@@ -5,7 +5,6 @@ from typing import Dict, Any
 
 from app.models.video_job import VideoJob
 
-
 # ---------------------------------------------------------
 # CONFIGURATION
 # ---------------------------------------------------------
@@ -19,10 +18,6 @@ HEADERS = {
     "Content-Type": "application/json",
 }
 
-MAX_POLL_ATTEMPTS = int(os.getenv("SILICONFLOW_MAX_POLL_ATTEMPTS", 20))
-POLL_INTERVAL_SEC = int(os.getenv("SILICONFLOW_POLL_INTERVAL_SEC", 15))
-
-
 # ---------------------------------------------------------
 # Utility: safe JSON conversion
 # ---------------------------------------------------------
@@ -30,32 +25,32 @@ def _safe_json(resp):
     try:
         return resp.json()
     except Exception:
-        raise Exception(
+        raise RuntimeError(
             f"SiliconFlow returned non-JSON response: {resp.text[:300]}"
         )
 
-
 # ---------------------------------------------------------
-# Utility: aspect ratio mapping
+# Utility: aspect ratio → image_size
 # ---------------------------------------------------------
 def _map_aspect_ratio(aspect_ratio: str) -> str:
-    mapping = {
+    return {
         "16:9": "1280x720",
         "9:16": "720x1280",
         "1:1": "960x960",
-    }
-    return mapping.get(aspect_ratio, "1280x720")
-
+    }.get(aspect_ratio, "1280x720")
 
 # ---------------------------------------------------------
-# 1️⃣ SUBMIT JOB TO SILICONFLOW
+# 1️⃣ SUBMIT JOB
 # ---------------------------------------------------------
 def submit(job: VideoJob, video) -> Dict[str, Any]:
-
     if not API_KEY:
-        raise Exception("SILICONFLOW_API_KEY is missing")
+        raise RuntimeError("SILICONFLOW_API_KEY is missing")
 
-    prompt_text = video.description or video.title
+    prompt_text = (
+        video.description
+        or video.title
+        or "Generate cinematic video"
+    )
 
     payload = {
         "model": MODEL,
@@ -70,11 +65,20 @@ def submit(job: VideoJob, video) -> Dict[str, Any]:
         timeout=30,
     )
 
+    if resp.status_code != 200:
+        return {
+            "status": "failed",
+            "error": f"SiliconFlow poll HTTP {resp.status_code}: {resp.text}",
+            "meta": _safe_json(resp),
+        }
+
     data = _safe_json(resp)
 
     request_id = data.get("requestId")
     if not request_id:
-        raise Exception(f"SiliconFlow did not return requestId: {data}")
+        raise RuntimeError(
+            f"SiliconFlow did not return requestId: {data}"
+        )
 
     return {
         "task_id": str(request_id),
@@ -82,59 +86,52 @@ def submit(job: VideoJob, video) -> Dict[str, Any]:
         "meta": data,
     }
 
-
 # ---------------------------------------------------------
 # 2️⃣ POLL JOB STATUS
 # ---------------------------------------------------------
 def poll(job: VideoJob) -> Dict[str, Any]:
-
     if not job.task_id:
-        raise Exception(f"Job {job.id} has no task_id")
-
-    payload = {"requestId": job.task_id}
+        raise RuntimeError(f"Job {job.id} has no task_id")
 
     resp = requests.post(
         f"{BASE_URL}/video/status",
         headers=HEADERS,
-        json=payload,
+        json={"requestId": job.task_id},
         timeout=30,
     )
 
+    if resp.status_code != 200:
+        raise RuntimeError(
+            f"SiliconFlow poll failed [{resp.status_code}]: {resp.text}"
+        )
+
     data = _safe_json(resp)
+    status = (data.get("status") or "").lower()
 
-    status = data.get("status")
-
-    if status == "Failed":
+    if status == "failed":
         return {
             "status": "failed",
+            "error": data.get("error") or "SiliconFlow provider reported failure",
             "meta": data,
         }
 
-    if status == "Succeed":
-        return {
-            "status": "success",
-            "meta": data,
-        }
+    if status == "succeed":
+        return {"status": "success", "meta": data}
 
     # InQueue | InProgress
-    return {
-        "status": "processing",
-        "meta": data,
-    }
-
+    return {"status": "processing", "meta": data}
 
 # ---------------------------------------------------------
-# 3️⃣ RETRIEVE FILE INFO (extract download URL)
+# 3️⃣ RETRIEVE FILE INFO
 # ---------------------------------------------------------
 def retrieve(job: VideoJob) -> Dict[str, Any]:
-
     """
-    SiliconFlow does not have a separate retrieve endpoint.
-    The signed video URL is returned directly in poll success payload.
+    SiliconFlow does NOT have a retrieve endpoint.
+    Signed URL is included in poll success payload.
     """
 
     if not job.meta:
-        raise Exception(f"Job {job.id} has no meta payload")
+        raise RuntimeError(f"Job {job.id} has no meta payload")
 
     meta = json.loads(job.meta) if isinstance(job.meta, str) else job.meta
 
@@ -142,7 +139,9 @@ def retrieve(job: VideoJob) -> Dict[str, Any]:
         video_obj = meta["results"]["videos"][0]
         download_url = video_obj["url"]
     except Exception:
-        raise Exception(f"Invalid SiliconFlow success payload: {meta}")
+        raise RuntimeError(
+            f"Invalid SiliconFlow success payload: {meta}"
+        )
 
     return {
         "status": "success",
@@ -152,22 +151,19 @@ def retrieve(job: VideoJob) -> Dict[str, Any]:
     }
 
 # ---------------------------------------------------------
-# 4️⃣ DOWNLOAD FILE (NO CONVERSION)
+# 4️⃣ DOWNLOAD FILE
 # ---------------------------------------------------------
 def download(download_url: str, final_path: str, timeout=600) -> str:
-
     os.makedirs(os.path.dirname(final_path), exist_ok=True)
 
     temp_path = f"{final_path}.part"
 
     with requests.get(download_url, stream=True, timeout=timeout) as r:
         r.raise_for_status()
-
         with open(temp_path, "wb") as f:
             for chunk in r.iter_content(chunk_size=8192):
                 if chunk:
                     f.write(chunk)
 
     os.replace(temp_path, final_path)
-
     return final_path

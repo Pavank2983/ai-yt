@@ -15,8 +15,8 @@ from app.services.ai_video_service import (
     process_running_job,
 )
 
-from app.services.voice_generation_service import generate_voice_for_script
-from app.services.orchestrator.scene_job_orchestrator import SceneJobOrchestrator
+# ✅ USE JOB EXECUTOR (single source of truth)
+from app.services.voice_generation_service import run_tts_video_job
 
 # =============================================================
 # LOGGER
@@ -31,11 +31,9 @@ if not scheduler_logger.handlers:
         "[%(asctime)s] [%(levelname)s] %(message)s"
     )
 
-    # Console output
     ch = logging.StreamHandler()
     ch.setFormatter(formatter)
 
-    # File output
     fh = logging.FileHandler("logs/scheduler.log", encoding="utf-8")
     fh.setFormatter(formatter)
 
@@ -47,8 +45,7 @@ if not scheduler_logger.handlers:
 # =============================================================
 POLL_INTERVAL = int(os.getenv("VIDEO_JOB_INTERVAL", 60))
 AI_VIDEO_PROVIDER = os.getenv("AI_VIDEO_PROVIDER", "MINIMAX").upper()
-USE_TTS_PROVIDER = os.getenv("USE_TTS_PROVIDER", "elevenlabs").lower()
-
+MAX_POLL_ATTEMPTS = int(os.getenv("MAX_POLL_ATTEMPTS", 5))
 
 # =============================================================
 # 🔑 MERGE JOB CREATION HELPER
@@ -106,44 +103,20 @@ def maybe_create_merge_job(db, video_id: int, script_id: int):
 # =============================================================
 def process_tts_job(job: VideoJob, db):
     scheduler_logger.info(
-        f"🔊 Running TTS job {job.id} (script_id={job.script_id})"
+        f"🔊 Executing TTS job {job.id} (script_id={job.script_id})"
     )
 
     try:
-        meta = json.loads(job.meta or "{}")
-
-        script = db.query(Script).filter(Script.id == job.script_id).first()
-        if not script:
-            raise RuntimeError("Script not found for TTS job")
-
-        result = generate_voice_for_script(
-            db=db,
-            script=script,
-            provider=USE_TTS_PROVIDER,
-            voice_name=meta.get("voice"),
-        )
-
-        job.status = JobStatus.success
-        job.completed_at = datetime.now(timezone.utc)
-        job.meta = json.dumps({
-            **meta,
-            "voice_path": result["file_path"],
-            "duration": result.get("duration"),
-        })
+        job.status = JobStatus.running
+        job.started_at = datetime.now(timezone.utc)
+        job.updated_at = datetime.now(timezone.utc)
         db.commit()
 
-        scheduler_logger.info(f"🎤 TTS job {job.id} completed successfully")
+        run_tts_video_job(db=db, video_job_id=job.id)
 
-        scene_orchestrator = SceneJobOrchestrator(
-            db=db,
-            script_id=script.id,
-            scenes=script.scene_timings,
-            voice_length_seconds=script.audio_duration_seconds,
-            provider=AI_VIDEO_PROVIDER,
-            quality="STANDARD",
+        scheduler_logger.info(
+            f"🎤 TTS job {job.id} completed successfully"
         )
-
-        scene_orchestrator.run()
 
     except Exception as e:
         scheduler_logger.error(
@@ -153,14 +126,8 @@ def process_tts_job(job: VideoJob, db):
         job.status = JobStatus.failed
         job.error_log = str(e)
         job.completed_at = datetime.now(timezone.utc)
+        job.updated_at = datetime.now(timezone.utc)
         db.commit()
-
-        if job.video_id:
-            video = db.query(Video).filter(Video.id == job.video_id).first()
-            if video:
-                video.status = "failed"
-                video.is_active = 0
-                db.commit()
 
 
 # =============================================================
@@ -202,17 +169,8 @@ def process_queued_jobs():
                 # 🔊 TTS JOBS (ABSOLUTE PRIORITY)
                 # -------------------------------------------------
                 if job.is_tts:
-                    scheduler_logger.info(
-                        f"🔊 Executing TTS job {job.id} (script_id={job.script_id})"
-                    )
-
-                    job.status = JobStatus.running
-                    job.started_at = datetime.now(timezone.utc)
-                    job.updated_at = datetime.now(timezone.utc)
-                    db.commit()
-
                     process_tts_job(job, db)
-                    continue  # 🚨 NEVER fall through
+                    continue
 
                 # -------------------------------------------------
                 # ⏸️ SCENE JOBS MUST WAIT FOR TTS
@@ -247,20 +205,12 @@ def process_queued_jobs():
                     f"🚀 Submitting VideoJob {job.id} to provider={job.provider}"
                 )
 
+                submit_job_to_provider(job.id)
+
+                # ✅ Only now mark as running
                 job.status = JobStatus.running
                 job.started_at = datetime.now(timezone.utc)
                 job.updated_at = datetime.now(timezone.utc)
-                db.commit()
-
-                submit_result = submit_job_to_provider(job.id)
-
-                if submit_result.get("file_path"):
-                    job.status = JobStatus.success
-                    job.completed_at = datetime.now(timezone.utc)
-
-                if "meta" in submit_result:
-                    job.meta = submit_result["meta"]
-
                 db.commit()
 
             except Exception as e:
@@ -317,24 +267,109 @@ def process_running_jobs():
                         )
 
                 elif result.get("status") == "failed":
+                    error = result.get("error", "")
+
+                    # 🟡 POLLING FAILURE → RETRY
+                    if (
+                        job.task_id
+                        and is_polling_error(error)
+                        and job.attempts < MAX_POLL_ATTEMPTS
+                    ):
+                        job.attempts += 1
+                        job.status = JobStatus.running
+                        job.error_log = error
+                        job.updated_at = datetime.now(timezone.utc)
+
+                        scheduler_logger.warning(
+                            f"🔁 Polling retry {job.attempts}/{MAX_POLL_ATTEMPTS} "
+                            f"for VideoJob {job.id}"
+                        )
+
+                        db.commit()
+                        continue
+
+                    # 🔴 HARD FAILURE (polling exhausted or non-retryable)
                     job.status = JobStatus.failed
-                    job.error_log = str(result.get("error"))
+                    job.error_log = error
                     job.completed_at = datetime.now(timezone.utc)
+
+                    scheduler_logger.error(
+                        f"❌ VideoJob {job.id} failed permanently: {error}"
+                    )
 
                 job.updated_at = datetime.now(timezone.utc)
                 db.commit()
 
             except Exception as e:
-                scheduler_logger.error(
-                    f"❌ Error polling job {job.id}: {e}", exc_info=True
-                )
+                # 🟡 Scheduler / infra error → polling retry
+                if (
+                    job.task_id
+                    and job.attempts < MAX_POLL_ATTEMPTS
+                ):
+                    job.attempts += 1
+                    job.status = JobStatus.running
+                    job.error_log = str(e)
+                    job.updated_at = datetime.now(timezone.utc)
+
+                    scheduler_logger.warning(
+                        f"🔁 Polling retry {job.attempts}/{MAX_POLL_ATTEMPTS} "
+                        f"for VideoJob {job.id} due to exception"
+                    )
+
+                    db.commit()
+                    continue
+
+                # 🔴 HARD FAILURE
                 job.status = JobStatus.failed
                 job.error_log = str(e)
                 job.completed_at = datetime.now(timezone.utc)
                 job.updated_at = datetime.now(timezone.utc)
+
+                scheduler_logger.error(
+                    f"❌ VideoJob {job.id} permanently failed: {e}",
+                    exc_info=True,
+                )
+
                 db.commit()
+
     finally:
         db.close()
+
+def is_polling_error(error: str) -> bool:
+    if not error:
+        return False
+
+    error = error.lower()
+    return any(
+        k in error
+        for k in [
+            "poll",
+            "timeout",
+            "network",
+            "500",
+            "temporary",
+            "oss",
+            "fetch",
+        ]
+    )
+
+
+def is_submission_error(error: str) -> bool:
+    if not error:
+        return False
+
+    error = error.lower()
+    return any(
+        k in error
+        for k in [
+            "no task_id",
+            "submit",
+            "request",
+            "processing failed",
+            "500",
+            "temporary",
+        ]
+    )
 
 
 # =============================================================
