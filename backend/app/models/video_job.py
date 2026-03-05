@@ -8,6 +8,7 @@ from sqlalchemy import (
     Text,
     Index,
     Boolean,
+    DECIMAL,
 )
 from sqlalchemy.orm import relationship
 from datetime import datetime, timezone
@@ -22,6 +23,15 @@ class JobStatus(str, enum.Enum):
     failed = "failed"
 
 
+# ---------------------------------------------------
+# Execution Mode (UPDATED)
+# ---------------------------------------------------
+class JobMode(str, enum.Enum):
+    video_api = "video_api"
+    synthetic = "synthetic"
+    image_motion = "image_motion"   # ✅ NEW (Hybrid Engine Support)
+
+
 class VideoJob(Base):
     __tablename__ = "video_jobs"
 
@@ -30,27 +40,29 @@ class VideoJob(Base):
     # ---------------------------------------------------
     __table_args__ = (
 
-        # 🔍 Provider polling (task_id IS NOT NULL only)
-        # Uniqueness enforced at app level (MySQL-safe)
+        # Provider polling
         Index(
             "idx_video_jobs_provider_task_id",
             "provider",
             "task_id",
         ),
 
-        # 🔍 Scheduler hot paths
+        # Scheduler hot paths
         Index("idx_video_jobs_status", "status"),
         Index("idx_video_jobs_is_tts_status", "is_tts", "status"),
 
-        # 🔍 Relationship filters
+        # Relationship filters
         Index("idx_video_jobs_script_id", "script_id"),
         Index("idx_video_jobs_video_id", "video_id"),
 
-        # 🔍 Scene orchestration
+        # Scene orchestration
         Index("idx_video_jobs_scene_index", "scene_index"),
 
-        # 🔍 Ordering / fairness
+        # Ordering
         Index("idx_video_jobs_created_at", "created_at"),
+
+        # ✅ NEW: Mode-based scheduling optimization
+        Index("idx_video_jobs_mode", "mode"),
     )
 
     # ---------------------------------------------------
@@ -77,9 +89,17 @@ class VideoJob(Base):
     is_tts = Column(Boolean, default=False, nullable=False)
 
     # ---------------------------------------------------
-    # Provider-specific fields (ONLY for non-TTS jobs)
+    # Provider-specific fields
     # ---------------------------------------------------
-    provider = Column(String(50), nullable=True)  # e.g. MINIMAX, RUNWAY
+    provider = Column(String(50), nullable=True)  # MINIMAX, RUNWAY, SYNTHETIC, etc.
+    provider_tier = Column(String(20), nullable=True)  # premium / standard / cheap / free
+
+    mode = Column(
+        Enum(JobMode),
+        default=JobMode.video_api,
+        nullable=False,
+    )
+
     task_id = Column(String(255), nullable=True)
     file_id = Column(String(255), nullable=True)
 
@@ -89,11 +109,16 @@ class VideoJob(Base):
     video_url = Column(Text, nullable=True)
     local_path = Column(String(512), nullable=True)
 
-    # Scene index (NULL for TTS jobs)
     scene_index = Column(Integer, nullable=True)
 
-    # JSON metadata (voice config, prompts, provider response)
+    # JSON metadata (prompts, provider response, hybrid info, etc.)
     meta = Column(Text, nullable=True)
+
+    # ---------------------------------------------------
+    # Cost Tracking
+    # ---------------------------------------------------
+    estimated_cost = Column(DECIMAL(10, 4), nullable=True)
+    actual_cost = Column(DECIMAL(10, 4), nullable=True)
 
     # ---------------------------------------------------
     # State
@@ -138,8 +163,11 @@ class VideoJob(Base):
         return (
             f"<VideoJob id={self.id} "
             f"type={job_type} "
+            f"tier={self.provider_tier} "
+            f"mode={self.mode} "
             f"script={self.script_id} "
             f"video={self.video_id} "
             f"scene={self.scene_index} "
-            f"status={self.status}>"
+            f"status={self.status} "
+            f"attempts={self.attempts}>"
         )

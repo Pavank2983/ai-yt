@@ -1,20 +1,27 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import localFont from "next/font/local";
+
 import "@/styles/globals.css";
 import "@/styles/theme-home.css";
 import "@/styles/theme-dashboard.css";
-import { headers } from "next/headers";
 
+import { headers } from "next/headers";
 import ClientProviders from "@/components/providers/ClientProviders";
 
-const geistSans = Geist({
+
+/* ✅ Use LOCAL Geist Variable Fonts */
+const geistSans = localFont({
+  src: "../../public/fonts/Geist/webfonts/Geist[wght].woff2",
   variable: "--font-geist-sans",
-  subsets: ["latin"],
+  weight: "100 900",
+  display: "swap",
 });
 
-const geistMono = Geist_Mono({
+const geistMono = localFont({
+  src: "../../public/fonts/GeistMono/webfonts/GeistMono[wght].woff2",
   variable: "--font-geist-mono",
-  subsets: ["latin"],
+  weight: "100 900",
+  display: "swap",
 });
 
 const allowIndexing = process.env.NEXT_PUBLIC_INDEX_FOLLOW_ENABLED === "true";

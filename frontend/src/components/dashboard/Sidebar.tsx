@@ -22,6 +22,7 @@ import {
     ChevronLeft,
     ChevronRight,
     PlusCircle,
+    Activity,
     Briefcase,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -101,6 +102,13 @@ const NAV_ITEMS = [
         icon: Users,
         roles: ["admin"],
     },
+    {
+        title: "System",
+        href: "/dashboard/system",
+        icon: Activity, // or Activity / Server if you prefer
+        roles: ["admin"],
+    },
+
     {
         title: "Team",
         href: "/dashboard/team",

@@ -3,6 +3,7 @@ import json
 import logging
 import traceback
 from datetime import datetime, timezone
+from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
@@ -11,6 +12,19 @@ from app.models.video_job import VideoJob, JobStatus
 from app.models.video import Video
 
 from app.utils import asset_paths
+
+# ✅ Cost Intelligence
+from app.services.cost_service import (
+    calculate_actual_cost,
+    update_video_total_cost,
+)
+
+# ✅ Failure Intelligence
+from app.services.provider_health_service import (
+    is_provider_healthy,
+    record_provider_failure,
+    record_provider_success,
+)
 
 # Provider imports
 from app.services.providers import (
@@ -56,8 +70,11 @@ def from_json(data):
 # ---------------------------------------------------------
 # 1️⃣ SUBMIT QUEUED JOB
 # ---------------------------------------------------------
-def submit_job_to_provider(job_id: int) -> dict:
-    db: Session = SessionLocal()
+def submit_job_to_provider(job_id: int, db: Session = None) -> dict:
+    own_session = False
+    if db is None:
+        db = SessionLocal()
+        own_session = True
 
     try:
         job = db.query(VideoJob).filter(VideoJob.id == job_id).first()
@@ -69,6 +86,20 @@ def submit_job_to_provider(job_id: int) -> dict:
             raise Exception(f"Video {job.video_id} not found")
 
         provider = (job.provider or "").upper().strip()
+
+        # ✅ Provider Health Check
+        if not is_provider_healthy(db, provider):
+            logger.warning(
+                f"🚫 Provider {provider} is in cooldown. Skipping submission."
+            )
+            job.error_log = "Provider in cooldown (Failure Intelligence)"
+            job.updated_at = datetime.now(timezone.utc)
+
+            if own_session:
+                db.commit()
+
+            return {"status": "cooldown"}
+
         provider_mod = PROVIDERS.get(provider)
         if not provider_mod:
             raise Exception(f"Provider '{provider}' not supported")
@@ -77,43 +108,76 @@ def submit_job_to_provider(job_id: int) -> dict:
 
         submit_result = provider_mod.submit(job, video)
 
-        if submit_result.get("task_id"):
-            job.task_id = submit_result["task_id"]
+        # 🔥 Validate provider submission
+        if submit_result.get("status") == "failed":
+            error_msg = submit_result.get("error", "Provider submission failed")
+            raise Exception(error_msg)
+
+        task_id = submit_result.get("task_id")
+        if not task_id:
+            raise Exception(
+                f"Provider {provider} did not return task_id. Payload: {submit_result}"
+            )
+
+        job.task_id = task_id
 
         if submit_result.get("meta"):
             job.meta = to_json(submit_result["meta"])
 
-        # Instant providers (DEV / local only)
+        # --------------------------------------------------
+        # Instant providers
+        # --------------------------------------------------
         if submit_result.get("file_path"):
             job.status = JobStatus.success
             job.local_path = submit_result["file_path"]
             job.completed_at = datetime.now(timezone.utc)
             job.updated_at = datetime.now(timezone.utc)
-            db.commit()
+
+            # ✅ Record success
+            record_provider_success(db, provider)
+
+            # ✅ COST
+            actual_cost = calculate_actual_cost(
+                job=job,
+                duration_seconds=video.video_length,
+            )
+            job.actual_cost = Decimal(actual_cost)
+
+            if own_session:
+                db.commit()
+                update_video_total_cost(db, job.video_id)
 
             return {
                 "status": "success",
                 "file_path": submit_result["file_path"],
             }
 
-        db.commit()
+        if own_session:
+            db.commit()
+
         return {"status": "queued", "task_id": job.task_id}
 
     except Exception as e:
-        db.rollback()
+        if own_session:
+            db.rollback()
+
         logger.error(f"❌ Error submitting job {job_id}: {e}")
         logger.debug(traceback.format_exc())
         raise
 
     finally:
-        db.close()
+        if own_session:
+            db.close()
 
 
 # ---------------------------------------------------------
 # 2️⃣ PROCESS RUNNING JOB (POLL → RETRIEVE → DOWNLOAD)
 # ---------------------------------------------------------
-def process_running_job(job_id: int) -> dict:
-    db: Session = SessionLocal()
+def process_running_job(job_id: int, db: Session = None) -> dict:
+    own_session = False
+    if db is None:
+        db = SessionLocal()
+        own_session = True
 
     try:
         job = db.query(VideoJob).filter(VideoJob.id == job_id).first()
@@ -157,7 +221,9 @@ def process_running_job(job_id: int) -> dict:
 
             job.attempts += 1
             job.updated_at = datetime.now(timezone.utc)
-            db.commit()
+
+            if own_session:
+                db.commit()
 
             return {"status": "processing"}
 
@@ -170,24 +236,24 @@ def process_running_job(job_id: int) -> dict:
                 poll_result.get("message", "Provider polling failed"),
             )
 
+            record_provider_failure(db, provider)
             logger.error(
                 f"❌ Provider FAILED | provider={provider} | job_id={job.id} | "
                 f"task_id={job.task_id} | error={error_msg}"
             )
 
-            # ⚠️ Do NOT hard-fail here
             job.error_log = error_msg
             job.updated_at = datetime.now(timezone.utc)
-            db.commit()
 
-            return {
-                "status": "failed",
-                "error": error_msg,
-            }
+            if own_session:
+                db.commit()
+
+            return {"status": "failed", "error": error_msg}
 
         # -----------------------------
         # SUCCESS
         # -----------------------------
+        record_provider_success(db, provider)
         logger.info(
             f"✅ Provider SUCCESS | provider={provider} | job_id={job.id} | "
             f"task_id={job.task_id}"
@@ -206,7 +272,9 @@ def process_running_job(job_id: int) -> dict:
             )
 
             job.file_id = file_id
-            db.commit()
+
+            if own_session:
+                db.commit()
 
             retrieve_result = provider_mod.retrieve(file_id)
             download_url = retrieve_result["download_url"]
@@ -249,35 +317,33 @@ def process_running_job(job_id: int) -> dict:
         job.completed_at = datetime.now(timezone.utc)
         job.updated_at = datetime.now(timezone.utc)
 
-        db.commit()
-
-        logger.info(
-            f"🎉 Scene completed | job_id={job.id} | scene={scene_index} | "
-            f"path={final_path}"
+        actual_cost = calculate_actual_cost(
+            job=job,
+            duration_seconds=video.video_length,
         )
+        job.actual_cost = Decimal(actual_cost)
+
+        if own_session:
+            db.commit()
+            logger.info(
+                f"🎉 Scene completed | job_id={job.id} | scene={scene_index} | "
+                f"path={final_path}"
+            )
+            update_video_total_cost(db, job.video_id)
 
         return {"status": "success", "file_path": final_path}
 
     except Exception as e:
-        db.rollback()
+        if own_session:
+            db.rollback()
 
         logger.error(
             f"❌ Exception during polling | job_id={job_id} | error={e}",
             exc_info=True,
         )
 
-        # ⚠️ Do NOT hard-fail here
-        try:
-            job.error_log = f"{type(e).__name__}: {str(e)}"
-            job.updated_at = datetime.now(timezone.utc)
-            db.commit()
-        except Exception:
-            db.rollback()
-
-        return {
-            "status": "failed",
-            "error": str(e),
-        }
+        return {"status": "failed", "error": str(e)}
 
     finally:
-        db.close()
+        if own_session:
+            db.close()

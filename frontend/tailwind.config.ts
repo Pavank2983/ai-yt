@@ -11,6 +11,13 @@ const config: Config = {
 	],
 	theme: {
 		extend: {
+
+			/* ✅ ADD THIS SECTION */
+			fontFamily: {
+				sans: ["var(--font-geist-sans)", "system-ui", "sans-serif"],
+				mono: ["var(--font-geist-mono)", "monospace"],
+			},
+
 			colors: {
 				border: "hsl(var(--border))",
 				input: "hsl(var(--input))",
