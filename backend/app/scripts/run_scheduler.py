@@ -2,7 +2,7 @@ import os
 import time
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 from app.db.database import SessionLocal
 from app.models.video_job import VideoJob, JobStatus
@@ -15,8 +15,12 @@ from app.services.ai_video_service import (
     process_running_job,
 )
 
-# ✅ USE JOB EXECUTOR (single source of truth)
 from app.services.voice_generation_service import run_tts_video_job
+from app.services.provider_router import choose_provider
+from app.services.performance_service import can_dispatch_job
+from app.services.engines.image_motion.image_motion_engine import (
+    generate_image_motion_scene,
+)
 
 # =============================================================
 # LOGGER
@@ -44,11 +48,39 @@ if not scheduler_logger.handlers:
 # CONFIG
 # =============================================================
 POLL_INTERVAL = int(os.getenv("VIDEO_JOB_INTERVAL", 60))
-AI_VIDEO_PROVIDER = os.getenv("AI_VIDEO_PROVIDER", "MINIMAX").upper()
+VIDEO_COST_MODE = os.getenv("VIDEO_COST_MODE", "balanced").lower()
 MAX_POLL_ATTEMPTS = int(os.getenv("MAX_POLL_ATTEMPTS", 5))
+JOB_STALE_MINUTES = int(os.getenv("JOB_STALE_MINUTES", 15))
+
 
 # =============================================================
-# 🔑 MERGE JOB CREATION HELPER
+# ♻️ STALE JOB RECOVERY
+# =============================================================
+def reset_stale_jobs(db):
+    stale_time = datetime.now(timezone.utc) - timedelta(minutes=JOB_STALE_MINUTES)
+
+    stale_jobs = (
+        db.query(VideoJob)
+        .filter(
+            VideoJob.status == JobStatus.running,
+            VideoJob.updated_at < stale_time,
+        )
+        .with_for_update(skip_locked=True)
+        .all()
+    )
+
+    for job in stale_jobs:
+        scheduler_logger.warning(f"♻️ Resetting stale job {job.id}")
+        job.status = JobStatus.queued
+        job.attempts += 1
+        job.updated_at = datetime.now(timezone.utc)
+
+    if stale_jobs:
+        db.flush()
+
+
+# =============================================================
+# 🔑 MERGE JOB CREATION
 # =============================================================
 def maybe_create_merge_job(db, video_id: int, script_id: int):
     """
@@ -95,7 +127,7 @@ def maybe_create_merge_job(db, video_id: int, script_id: int):
     )
 
     db.add(merge_job)
-    db.commit()
+    db.flush()  # IMPORTANT: do not commit inside transaction
 
 
 # =============================================================
@@ -110,13 +142,11 @@ def process_tts_job(job: VideoJob, db):
         job.status = JobStatus.running
         job.started_at = datetime.now(timezone.utc)
         job.updated_at = datetime.now(timezone.utc)
-        db.commit()
+        db.flush()
 
         run_tts_video_job(db=db, video_job_id=job.id)
 
-        scheduler_logger.info(
-            f"🎤 TTS job {job.id} completed successfully"
-        )
+        scheduler_logger.info(f"🎤 TTS job {job.id} completed successfully")
 
     except Exception as e:
         scheduler_logger.error(
@@ -127,7 +157,7 @@ def process_tts_job(job: VideoJob, db):
         job.error_log = str(e)
         job.completed_at = datetime.now(timezone.utc)
         job.updated_at = datetime.now(timezone.utc)
-        db.commit()
+        db.flush()
 
 
 # =============================================================
@@ -136,25 +166,26 @@ def process_tts_job(job: VideoJob, db):
 def process_queued_jobs():
     db = SessionLocal()
     try:
-        queued_jobs = (
-            db.query(VideoJob)
-            .filter(VideoJob.status == JobStatus.queued)
-            .order_by(VideoJob.created_at.asc())
-            .limit(5)
-            .all()
-        )
+        with db.begin():
 
-        if not queued_jobs:
-            scheduler_logger.info("⏳ No queued jobs.")
-            return
+            reset_stale_jobs(db)
 
-        for job in queued_jobs:
-            try:
-                # -------------------------------------------------
-                # 🚫 SKIP orchestration / marker jobs
-                # -------------------------------------------------
-                # These are VideoJob rows created only to track orchestration
-                # They must NEVER be executed by the scheduler
+            queued_jobs = (
+                db.query(VideoJob)
+                .filter(VideoJob.status == JobStatus.queued)
+                .order_by(VideoJob.created_at.asc())
+                .with_for_update(skip_locked=True)
+                .limit(5)
+                .all()
+            )
+
+            if not queued_jobs:
+                scheduler_logger.info("⏳ No queued jobs.")
+                return
+
+            for job in queued_jobs:
+
+                # Skip marker jobs
                 if (
                     job.scene_index is None
                     and not job.is_tts
@@ -194,143 +225,238 @@ def process_queued_jobs():
                         continue
 
                 # -------------------------------------------------
-                # 🚀 AI VIDEO PROVIDER JOBS (SCENE JOBS)
+                # 🔄 Retry Routing
                 # -------------------------------------------------
-                if not job.provider:
-                    raise RuntimeError(
-                        f"Provider missing for VideoJob {job.id}"
+                if job.scene_index is not None and job.attempts >= 1:
+                    script = (
+                        db.query(Script)
+                        .filter(Script.id == job.script_id)
+                        .first()
                     )
 
-                scheduler_logger.info(
-                    f"🚀 Submitting VideoJob {job.id} to provider={job.provider}"
-                )
+                    if script and script.scene_timings:
+                        decision = choose_provider(
+                            scene_index=job.scene_index,
+                            total_scenes=len(script.scene_timings),
+                            attempts=job.attempts,
+                            category_name="",
+                            cost_mode=VIDEO_COST_MODE,
+                        )
 
-                submit_job_to_provider(job.id)
+                        job.provider = decision["provider"]
+                        job.provider_tier = decision["provider_tier"]
+                        job.mode = decision["mode"]
 
-                # ✅ Only now mark as running
-                job.status = JobStatus.running
-                job.started_at = datetime.now(timezone.utc)
-                job.updated_at = datetime.now(timezone.utc)
-                db.commit()
+                        scheduler_logger.info(
+                            f"🔁 Retry routing for VideoJob {job.id} → "
+                            f"provider={job.provider}, tier={job.provider_tier}"
+                        )
 
-            except Exception as e:
-                scheduler_logger.error(
-                    f"❌ Error processing queued job {job.id}: {e}",
-                    exc_info=True,
-                )
-                job.status = JobStatus.failed
-                job.error_log = str(e)
-                job.updated_at = datetime.now(timezone.utc)
-                db.commit()
+                # -------------------------------------------------
+                # 🎞️ HYBRID IMAGE MOTION
+                # -------------------------------------------------
+                meta = {}
+                if job.meta:
+                    try:
+                        meta = json.loads(job.meta)
+                    except Exception:
+                        meta = {}
 
-    finally:
-        db.close()
+                if meta.get("image_motion", False):
 
-# =============================================================
-# 🔵 PROCESS RUNNING PROVIDER JOBS
-# =============================================================
-def process_running_jobs():
-    db = SessionLocal()
-    try:
-        running_jobs = (
-            db.query(VideoJob)
-            .filter(
-                VideoJob.status == JobStatus.running,
-                VideoJob.is_tts.is_(False),
-            )
-            .order_by(VideoJob.updated_at.asc())
-            .limit(10)
-            .all()
-        )
+                    scheduler_logger.info(
+                        f"🎞️ Image Motion execution for VideoJob {job.id}"
+                    )
 
-        if not running_jobs:
-            scheduler_logger.info("⏳ No running jobs to poll.")
-            return
+                    try:
+                        job.status = JobStatus.running
+                        job.started_at = datetime.now(timezone.utc)
+                        job.updated_at = datetime.now(timezone.utc)
+                        db.flush()
 
-        for job in running_jobs:
-            try:
-                result = process_running_job(job.id)
+                        video_path = generate_image_motion_scene(
+                            prompt=meta.get("scene_prompt", ""),
+                            duration=meta.get("duration_sec", 6),
+                            script_id=job.script_id,
+                            scene_index=job.scene_index,
+                            scene_type=meta.get("scene_type", "normal"),
+                        )
 
-                if "meta" in result:
-                    job.meta = result["meta"]
+                        if not video_path or not os.path.exists(video_path):
+                            raise RuntimeError("Image motion generation failed")
 
-                if result.get("status") == "success":
-                    job.status = JobStatus.success
-                    job.completed_at = datetime.now(timezone.utc)
+                        # ✅ Persist output path (CRITICAL FOR MERGE WORKER)
+                        job.local_path = video_path
 
-                    # 🔑 CHECK FOR MERGE TRIGGER
-                    if job.scene_index is not None:
+                        meta["file_path"] = video_path
+                        job.meta = json.dumps(meta)
+
+                        job.status = JobStatus.success
+                        job.completed_at = datetime.now(timezone.utc)
+                        job.updated_at = datetime.now(timezone.utc)
+
+                        scheduler_logger.info(
+                            f"✅ Image Motion SUCCESS | VideoJob {job.id} → {video_path}"
+                        )
+
+                        db.flush()
+
                         maybe_create_merge_job(
                             db=db,
                             video_id=job.video_id,
                             script_id=job.script_id,
                         )
 
-                elif result.get("status") == "failed":
-                    error = result.get("error", "")
+                        continue
 
-                    # 🟡 POLLING FAILURE → RETRY
+                    except Exception as e:
+                        scheduler_logger.error(
+                            f"❌ Image Motion FAILED for VideoJob {job.id}: {e}",
+                            exc_info=True,
+                        )
+
+                        job.status = JobStatus.failed
+                        job.error_log = str(e)
+                        job.completed_at = datetime.now(timezone.utc)
+                        job.updated_at = datetime.now(timezone.utc)
+                        db.flush()
+                        continue
+
+                # -------------------------------------------------
+                # 🚀 NORMAL PROVIDER FLOW
+                # -------------------------------------------------
+                if not job.provider:
+                    raise RuntimeError(
+                        f"Provider missing for VideoJob {job.id}"
+                    )
+
+                if not can_dispatch_job(db, job.provider):
+                    scheduler_logger.info(
+                        f"⏳ Performance throttle → skipping job {job.id} "
+                        f"(provider={job.provider})"
+                    )
+                    continue
+
+                scheduler_logger.info(
+                    f"🚀 Submitting VideoJob {job.id} to provider={job.provider}"
+                )
+
+                submit_job_to_provider(job.id, db=db)
+                db.refresh(job)
+
+                if job.status == JobStatus.queued:
+                    job.status = JobStatus.running
+                    job.started_at = datetime.now(timezone.utc)
+                    job.updated_at = datetime.now(timezone.utc)
+                    db.flush()
+
+    finally:
+        db.close()
+
+
+# =============================================================
+# 🔵 PROCESS RUNNING JOBS
+# =============================================================
+def process_running_jobs():
+    db = SessionLocal()
+    try:
+        with db.begin():
+
+            running_jobs = (
+                db.query(VideoJob)
+                .filter(
+                    VideoJob.status == JobStatus.running,
+                    VideoJob.is_tts.is_(False),
+                )
+                .order_by(VideoJob.updated_at.asc())
+                .with_for_update(skip_locked=True)
+                .limit(10)
+                .all()
+            )
+
+            if not running_jobs:
+                scheduler_logger.info("⏳ No running jobs to poll.")
+                return
+
+            for job in running_jobs:
+                try:
+                    result = process_running_job(job.id, db=db)
+
+                    if "meta" in result:
+                        job.meta = result["meta"]
+
+                    if result.get("status") == "success":
+                        job.status = JobStatus.success
+                        job.completed_at = datetime.now(timezone.utc)
+
+                        # 🔑 CHECK FOR MERGE TRIGGER
+                        if job.scene_index is not None:
+                            maybe_create_merge_job(
+                                db=db,
+                                video_id=job.video_id,
+                                script_id=job.script_id,
+                            )
+
+                    elif result.get("status") == "failed":
+                        error = result.get("error", "")
+
+                        # 🟡 POLLING FAILURE → RETRY
+                        if (
+                            job.task_id
+                            and is_polling_error(error)
+                            and job.attempts < MAX_POLL_ATTEMPTS
+                        ):
+                            job.attempts += 1
+                            job.updated_at = datetime.now(timezone.utc)
+                            scheduler_logger.warning(
+                                f"🔁 Polling retry {job.attempts}/{MAX_POLL_ATTEMPTS} "
+                                f"for VideoJob {job.id}"
+                            )
+                            continue
+
+                        # 🔴 HARD FAILURE (polling exhausted or non-retryable)
+                        job.status = JobStatus.failed
+                        job.error_log = error
+                        job.completed_at = datetime.now(timezone.utc)
+
+                        scheduler_logger.error(
+                            f"❌ VideoJob {job.id} failed permanently: {error}"
+                        )
+
+                    job.updated_at = datetime.now(timezone.utc)
+                    db.commit()
+
+                except Exception as e:
+                    # 🟡 Scheduler / infra error → polling retry
                     if (
                         job.task_id
-                        and is_polling_error(error)
                         and job.attempts < MAX_POLL_ATTEMPTS
                     ):
                         job.attempts += 1
                         job.status = JobStatus.running
-                        job.error_log = error
+                        job.error_log = str(e)
                         job.updated_at = datetime.now(timezone.utc)
 
                         scheduler_logger.warning(
                             f"🔁 Polling retry {job.attempts}/{MAX_POLL_ATTEMPTS} "
-                            f"for VideoJob {job.id}"
+                            f"for VideoJob {job.id} due to exception"
                         )
 
                         db.commit()
                         continue
 
-                    # 🔴 HARD FAILURE (polling exhausted or non-retryable)
+                    # 🔴 HARD FAILURE
                     job.status = JobStatus.failed
-                    job.error_log = error
-                    job.completed_at = datetime.now(timezone.utc)
-
-                    scheduler_logger.error(
-                        f"❌ VideoJob {job.id} failed permanently: {error}"
-                    )
-
-                job.updated_at = datetime.now(timezone.utc)
-                db.commit()
-
-            except Exception as e:
-                # 🟡 Scheduler / infra error → polling retry
-                if (
-                    job.task_id
-                    and job.attempts < MAX_POLL_ATTEMPTS
-                ):
-                    job.attempts += 1
-                    job.status = JobStatus.running
                     job.error_log = str(e)
+                    job.completed_at = datetime.now(timezone.utc)
                     job.updated_at = datetime.now(timezone.utc)
 
-                    scheduler_logger.warning(
-                        f"🔁 Polling retry {job.attempts}/{MAX_POLL_ATTEMPTS} "
-                        f"for VideoJob {job.id} due to exception"
+                    scheduler_logger.error(
+                        f"❌ VideoJob {job.id} permanently failed: {e}",
+                        exc_info=True,
                     )
 
                     db.commit()
-                    continue
-
-                # 🔴 HARD FAILURE
-                job.status = JobStatus.failed
-                job.error_log = str(e)
-                job.completed_at = datetime.now(timezone.utc)
-                job.updated_at = datetime.now(timezone.utc)
-
-                scheduler_logger.error(
-                    f"❌ VideoJob {job.id} permanently failed: {e}",
-                    exc_info=True,
-                )
-
-                db.commit()
 
     finally:
         db.close()
@@ -353,27 +479,8 @@ def is_polling_error(error: str) -> bool:
         ]
     )
 
-
-def is_submission_error(error: str) -> bool:
-    if not error:
-        return False
-
-    error = error.lower()
-    return any(
-        k in error
-        for k in [
-            "no task_id",
-            "submit",
-            "request",
-            "processing failed",
-            "500",
-            "temporary",
-        ]
-    )
-
-
 # =============================================================
-# 🔵 MAIN LOOP
+# MAIN LOOP
 # =============================================================
 def run_scheduler():
     scheduler_logger.info("🕒 Video Job Scheduler Started")

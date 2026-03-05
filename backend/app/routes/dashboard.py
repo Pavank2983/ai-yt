@@ -2,8 +2,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.db.database import get_db
-from app.schemas.dashboard import DashboardMetricsResponse, DashboardJobsResponse, DashboardVideoResponse
+from app.schemas.dashboard import DashboardMetricsResponse, DashboardJobsResponse, DashboardVideoResponse, SystemMetricsResponse
 from app.services.dashboard_service import get_dashboard_metrics, get_dashboard_jobs, get_dashboard_videos
+from app.services.system_metrics_service import get_system_metrics
 from app.core.security import get_current_user
 from app.models.user import User
 
@@ -123,3 +124,14 @@ def reject_video(
         "rejected_at": video.rejected_at,
         "reason": reason,
     }
+
+
+@router.get("/system-metrics", response_model=SystemMetricsResponse)
+def system_metrics(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin only")
+
+    return get_system_metrics(db)

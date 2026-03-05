@@ -1,5 +1,4 @@
 import os
-from typing import Optional
 
 # ============================================================
 # BASE OUTPUT ROOT
@@ -23,7 +22,9 @@ def script_root(script_id: int) -> str:
 # ============================================================
 
 def voice_dir(script_id: int) -> str:
-    return os.path.join(script_root(script_id), "voices")
+    path = os.path.join(script_root(script_id), "voices")
+    os.makedirs(path, exist_ok=True)
+    return path
 
 
 def primary_voice_path(script_id: int) -> str:
@@ -36,7 +37,9 @@ def primary_voice_path(script_id: int) -> str:
 # ============================================================
 
 def videos_root(script_id: int) -> str:
-    return os.path.join(script_root(script_id), "videos")
+    path = os.path.join(script_root(script_id), "videos")
+    os.makedirs(path, exist_ok=True)
+    return path
 
 
 # ============================================================
@@ -46,15 +49,25 @@ def videos_root(script_id: int) -> str:
 # ============================================================
 
 def scenes_dir(script_id: int) -> str:
-    return os.path.join(videos_root(script_id), "scenes")
+    path = os.path.join(videos_root(script_id), "scenes")
+    os.makedirs(path, exist_ok=True)
+    return path
 
 
 def scene_dir(script_id: int, scene_index: int) -> str:
-    return os.path.join(scenes_dir(script_id), f"{scene_index:02d}")
+    path = os.path.join(scenes_dir(script_id), f"{scene_index:02d}")
+    os.makedirs(path, exist_ok=True)
+    return path
 
 
+# 🎬 Standardized scene output video path
 def scene_output_path(script_id: int, scene_index: int) -> str:
     return os.path.join(scene_dir(script_id, scene_index), "output.mp4")
+
+
+# 🖼 Standardized generated frame path
+def scene_frame_path(script_id: int, scene_index: int) -> str:
+    return os.path.join(scene_dir(script_id, scene_index), "frame.png")
 
 
 def scenes_manifest_path(script_id: int) -> str:
@@ -67,7 +80,9 @@ def scenes_manifest_path(script_id: int) -> str:
 # ============================================================
 
 def merge_dir(script_id: int) -> str:
-    return os.path.join(videos_root(script_id), "merge")
+    path = os.path.join(videos_root(script_id), "merge")
+    os.makedirs(path, exist_ok=True)
+    return path
 
 
 def merge_task_path(script_id: int) -> str:
@@ -79,7 +94,9 @@ def merge_log_path(script_id: int) -> str:
 
 
 def merge_temp_dir(script_id: int) -> str:
-    return os.path.join(merge_dir(script_id), "temp")
+    path = os.path.join(merge_dir(script_id), "temp")
+    os.makedirs(path, exist_ok=True)
+    return path
 
 
 # ============================================================
@@ -88,7 +105,9 @@ def merge_temp_dir(script_id: int) -> str:
 # ============================================================
 
 def final_dir(script_id: int) -> str:
-    return os.path.join(videos_root(script_id), "final")
+    path = os.path.join(videos_root(script_id), "final")
+    os.makedirs(path, exist_ok=True)
+    return path
 
 
 def final_video_path(script_id: int) -> str:

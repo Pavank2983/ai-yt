@@ -10,6 +10,115 @@ from app.utils.asset_paths import scenes_dir
 WORDS_PER_SECOND = 2.2  # realistic narration speed
 
 # ---------------------------------------------------------
+# Emotion keyword map
+# ---------------------------------------------------------
+EMOTION_KEYWORDS = {
+    "horror": {
+        "keywords": [
+            "monster", "ghost", "blood", "creature",
+            "demon", "evil", "darkness", "haunted",
+            "shadow", "terror", "scream"
+        ],
+        "verbs": [
+            "lurks", "stalks", "emerges", "appears"
+        ],
+        "weight": 2.0
+    },
+
+    "suspense": {
+        "keywords": [
+            "creak", "whisper", "slowly", "tension",
+            "waiting", "silence", "watching",
+            "unknown", "suddenly"
+        ],
+        "verbs": [
+            "moves", "opens", "approaches"
+        ],
+        "weight": 1.6
+    },
+
+    "action": {
+        "keywords": [
+            "fight", "battle", "explodes", "crash",
+            "attack", "chase"
+        ],
+        "verbs": [
+            "runs", "jumps", "dodges", "strikes",
+            "charges", "smashes"
+        ],
+        "weight": 1.8
+    },
+
+    "calm": {
+        "keywords": [
+            "sunset", "breeze", "gentle", "peaceful",
+            "quiet", "soft", "nature"
+        ],
+        "verbs": [
+            "flows", "rests", "drifts"
+        ],
+        "weight": 1.2
+    },
+
+    "dramatic": {
+        "keywords": [
+            "dramatic", "intense", "reveal",
+            "shocking", "powerful"
+        ],
+        "verbs": [
+            "reveals", "confronts", "declares"
+        ],
+        "weight": 1.4
+    }
+}
+
+# ---------------------------------------------------------
+# Emotion detector
+# ---------------------------------------------------------
+def _detect_emotion(text: str, default: str = "neutral") -> str:
+    if not text:
+        return default
+
+    text_lower = text.lower()
+
+    scores = {}
+
+    for emotion, data in EMOTION_KEYWORDS.items():
+        score = 0
+        # keyword match
+        for word in data.get("keywords", []):
+            if word in text_lower:
+                score += 2
+
+        # verb match
+        for verb in data.get("verbs", []):
+            if verb in text_lower:
+                score += 1
+
+        # punctuation intensity
+        if "!" in text and emotion in ["action", "horror"]:
+            score += 1
+
+        # sentence length heuristic
+        if len(text.split()) > 12 and emotion == "dramatic":
+            score += 1
+
+        # apply weight
+        score *= data.get("weight", 1)
+
+        scores[emotion] = score
+
+    if not scores:
+        return default
+
+    best_emotion = max(scores, key=scores.get)
+
+    if scores[best_emotion] <= 0:
+        return default
+
+    return best_emotion
+
+# ---------------------------------------------------------
 # Safe JSON loader
 # ---------------------------------------------------------
 def _safe_load_json(value) -> Dict[str, Any]:
@@ -69,11 +178,20 @@ def _build_semantic_scenes(
         word_count = len(narration.split())
         duration_sec = max(4, int(word_count / WORDS_PER_SECOND))
 
+        # -------------------------------------------------
+        # NEW: Emotion detection
+        # -------------------------------------------------
+        detected_emotion = _detect_emotion(
+            narration,
+            default=tone or "neutral"
+        )
+
         scenes.append({
             "index": idx,
             "narration": narration,
             "duration_sec": duration_sec,
-            "emotion": tone or "neutral",
+            # upgraded emotion logic
+            "emotion": detected_emotion,
             "pacing": "steady",
             "visual_prompt": f"{visual_env}, cinematic framing, scene {idx}",
         })

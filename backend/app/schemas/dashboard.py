@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 
 # =========================
 # Metrics
@@ -51,3 +51,8 @@ class DashboardVideoResponse(BaseModel):
     thumbnail_url: Optional[str]
     created_at: datetime
 
+class SystemMetricsResponse(BaseModel):
+    cost: Dict[str, Any]
+    videos: Dict[str, Any]
+    jobs: Dict[str, Any]
+    provider_health_24h: Dict[str, Any]

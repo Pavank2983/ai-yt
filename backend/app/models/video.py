@@ -1,6 +1,6 @@
 from sqlalchemy import (
     Column, Integer, String, Text, Enum, DateTime,
-    ForeignKey, JSON, Float, Boolean, text
+    ForeignKey, JSON, Float, Boolean, text, DECIMAL
 )
 from sqlalchemy.dialects.mysql import LONGTEXT
 from sqlalchemy.orm import relationship
@@ -44,6 +44,13 @@ class Video(Base):
     render_time = Column(Float)
 
     # --------------------------------------------------
+    # 💰 Cost Intelligence (NEW)
+    # --------------------------------------------------
+    estimated_total_cost = Column(DECIMAL(12, 4), nullable=True)
+    actual_total_cost = Column(DECIMAL(12, 4), nullable=True)
+    cost_breakdown_json = Column(LONGTEXT, nullable=True)
+
+    # --------------------------------------------------
     # Runtime / Errors
     # --------------------------------------------------
     view_count = Column(Integer, server_default=text("0"))
@@ -65,7 +72,7 @@ class Video(Base):
     upload_response = Column(JSON)
 
     # --------------------------------------------------
-    # 🔐 APPROVAL WORKFLOW (NEW)
+    # 🔐 APPROVAL WORKFLOW
     # --------------------------------------------------
     approval_status = Column(
         Enum(ApprovalStatus, name="video_approval_status"),

@@ -191,53 +191,128 @@ def _verticalize(inp: str, out: str):
     ])
 
 # ============================================================
-# MERGE EXECUTION (FIXED)
+# MERGE EXECUTION (FIXED + VERBOSE LOGGING)
 # ============================================================
 def process_merge_job(mj: VideoMergeJob, db):
+    logger.info(
+        "🔀 Processing merge job | video_id=%s script_id=%s status=%s attempts=%s",
+        mj.video_id,
+        mj.script_id,
+        mj.status,
+        mj.attempts,
+    )
+
     vid = mj.video_id
     sid = mj.script_id
 
     _write_log(sid, "▶ Merge started")
 
+    # --------------------------------------------------------
+    # 1️⃣ Check scene readiness
+    # --------------------------------------------------------
     scenes = _all_scene_jobs_success(db, vid)
+
     if not scenes:
+        logger.warning(
+            "⏸ Scenes not ready for merge | video_id=%s",
+            vid,
+        )
         _write_log(sid, "⏸ Scenes not ready")
         return False
 
+    logger.info(
+        "🎬 %s scenes ready for merge | video_id=%s",
+        len(scenes),
+        vid,
+    )
+
     paths = [j.local_path for j in scenes]
 
+    for p in paths:
+        logger.info("📂 Scene file: %s", p)
+
+    # --------------------------------------------------------
+    # 2️⃣ Prepare directories
+    # --------------------------------------------------------
     merge_dir = asset_paths.merge_dir(sid)
     final_path = asset_paths.final_video_path(sid)
+
     os.makedirs(merge_dir, exist_ok=True)
     os.makedirs(os.path.dirname(final_path), exist_ok=True)
 
     tmp = os.path.join(merge_dir, "temp.mp4")
 
-    try:
-        _crossfade(paths, tmp, duration=2)
+    logger.info("🗂 Merge directory: %s", merge_dir)
+    logger.info("📦 Temp file: %s", tmp)
+    logger.info("🎯 Final output path: %s", final_path)
 
+    try:
+        # ----------------------------------------------------
+        # 3️⃣ Crossfade scenes
+        # ----------------------------------------------------
+        logger.info("🔁 Starting crossfade merge")
+        _crossfade(paths, tmp, duration=2)
+        logger.info("✅ Crossfade completed")
+
+        # ----------------------------------------------------
+        # 4️⃣ Voice selection
+        # ----------------------------------------------------
         voices_dir = asset_paths.voice_dir(sid)
+        logger.info("🔊 Voice directory: %s", voices_dir)
+
+        if not os.path.exists(voices_dir):
+            raise RuntimeError("Voice directory does not exist")
+
         voice_files = sorted(
             f for f in os.listdir(voices_dir) if f.endswith(".mp3")
         )
+
+        logger.info("🎙 Voice files found: %s", voice_files)
+
         if not voice_files:
             raise RuntimeError("No voice file found")
 
         voice_path = os.path.join(voices_dir, voice_files[0])
+        logger.info("🎤 Using voice file: %s", voice_path)
 
+        # ----------------------------------------------------
+        # 5️⃣ Align video to voice duration
+        # ----------------------------------------------------
         dur = _ffprobe_duration(voice_path)
+        logger.info("⏱ Voice duration: %s seconds", dur)
+
+        if not dur:
+            raise RuntimeError("Unable to read voice duration")
+
         aligned = tmp + ".aligned.mp4"
+        logger.info("🧮 Aligning video to voice duration")
         _align_to_duration(tmp, dur, aligned)
         os.replace(aligned, tmp)
+        logger.info("✅ Alignment complete")
 
+        # ----------------------------------------------------
+        # 6️⃣ Mix voice into video
+        # ----------------------------------------------------
         mixed = tmp + ".voice.mp4"
+        logger.info("🎛 Mixing voice into video")
         _mix_voice(tmp, voice_path, mixed)
         os.replace(mixed, tmp)
+        logger.info("✅ Voice mixing complete")
 
+        # ----------------------------------------------------
+        # 7️⃣ Vertical conversion
+        # ----------------------------------------------------
+        logger.info("📱 Verticalizing final output")
         _verticalize(tmp, final_path)
+        logger.info("✅ Verticalization complete")
 
+        # ----------------------------------------------------
+        # 8️⃣ Update DB
+        # ----------------------------------------------------
         video = db.query(Video).filter(Video.id == vid).first()
+
         if video:
+            logger.info("📝 Updating video DB record | video_id=%s", vid)
             video.file_url = final_path
             # ❌ DO NOT set video.status here
             video.approval_status = ApprovalStatus.pending_review
@@ -245,18 +320,31 @@ def process_merge_job(mj: VideoMergeJob, db):
         mj.status = MergeStatus.success
         mj.completed_at = datetime.now(timezone.utc)
         mj.final_output_path = final_path
+
         db.commit()
 
+        logger.info("🎉 Merge SUCCESS | video_id=%s", vid)
         _write_log(sid, "✅ Merge successful")
+
         return True
 
     except Exception as e:
-        logger.error(f"❌ Merge failed: {e}", exc_info=True)
+        logger.error(
+            "❌ Merge FAILED | video_id=%s script_id=%s → %s",
+            vid,
+            sid,
+            e,
+            exc_info=True,
+        )
+
         _write_log(sid, f"❌ ERROR: {e}")
+
         mj.status = MergeStatus.failed
         mj.error_log = str(e)
         mj.attempts = (mj.attempts or 0) + 1
+
         db.commit()
+
         return False
 
 # ============================================================

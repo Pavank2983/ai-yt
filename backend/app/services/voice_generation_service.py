@@ -253,8 +253,11 @@ def generate_voice_for_script(
         script.audio_duration_seconds = result["duration"]
         script.tts_voice = result["voice_name"]
 
-    db.commit()
+    # ✅ IMPORTANT: flush instead of commit
+    db.flush()
+
     return result
+
 
 # ─────────────────────────────────────────────
 # TTS VIDEO JOB
@@ -275,7 +278,9 @@ def run_tts_video_job(db: Session, video_job_id: int):
 
     job.status = JobStatus.running
     job.started_at = datetime.now(UTC)
-    db.commit()
+
+    # ✅ flush instead of commit
+    db.flush()
 
     meta = json.loads(job.meta or "{}")
     result = generate_voice_for_script(
@@ -288,21 +293,29 @@ def run_tts_video_job(db: Session, video_job_id: int):
         job.status = JobStatus.failed
         job.error_log = "TTS failed"
         job.completed_at = datetime.now(UTC)
-        db.commit()
+
+        # ✅ flush instead of commit
+        db.flush()
         return
 
     job.status = JobStatus.success
     job.completed_at = datetime.now(UTC)
-    db.commit()
+
+    # ✅ flush instead of commit
+    db.flush()
 
     SceneJobOrchestrator(
         db=db,
         script_id=script.id,
         scenes=script.scene_timings,
         voice_length_seconds=script.audio_duration_seconds,
-        provider=os.getenv("AI_VIDEO_PROVIDER", "MINIMAX"),
+        provider=None,
         quality="STANDARD",
+        cost_mode=os.getenv("VIDEO_COST_MODE", "balanced"),
+        category_name=(script.category.name if script.category else ""),
     ).run()
 
     video.status = "rendering"
-    db.commit()
+
+    # ✅ flush instead of commit
+    db.flush()

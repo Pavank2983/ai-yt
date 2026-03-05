@@ -3,6 +3,7 @@ import json
 import os
 from typing import Literal
 from datetime import datetime, timezone
+from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
@@ -11,6 +12,11 @@ from app.models.video import Video
 from app.models.video_job import VideoJob, JobStatus
 from app.models.category import Category
 from app.services.orchestrator.scene_job_orchestrator import SceneJobOrchestrator
+from app.services.provider_router import choose_provider
+from app.services.cost_service import (
+    check_video_budget,
+    check_daily_budget,
+)
 
 logger = logging.getLogger("video_orchestrator")
 logger.setLevel(logging.INFO)
@@ -54,14 +60,17 @@ class VideoOrchestrator:
         script_id: int,
         trigger: Literal["manual", "scheduled"],
         requested_by: int | None = None,
+        user_role: str | None = None,   # ✅ NEW (for admin bypass)
     ):
         self.db = db
         self.script_id = script_id
         self.trigger = trigger
         self.requested_by = requested_by
+        self.user_role = user_role
 
         # 🔑 Video provider is always from ENV
         self.video_provider = os.getenv("AI_VIDEO_PROVIDER", "MINIMAX").upper()
+        self.cost_mode = os.getenv("VIDEO_COST_MODE", "balanced").lower()
 
     def start(self) -> dict:
         """
@@ -87,7 +96,57 @@ class VideoOrchestrator:
             raise ValueError("Script scenes missing or not analyzed")
 
         # -------------------------------------------------
-        # 2️⃣ Enforce single active video per script
+        # 2️⃣ Estimate Total Cost BEFORE creation
+        # -------------------------------------------------
+        total_estimated_cost = Decimal("0.00")
+
+        category = (
+            self.db.query(Category)
+            .filter(Category.id == script.category_id)
+            .first()
+        )
+
+        if not category:
+            raise ValueError("Script category not found")
+
+        category_name = (category.name or "").upper()
+        scenes = script.scene_timings
+
+        for idx, _ in enumerate(scenes):
+            decision = choose_provider(
+                scene_index=idx,
+                total_scenes=len(scenes),
+                attempts=0,
+                category_name=category_name,
+                cost_mode=self.cost_mode,
+            )
+
+            estimated = decision.get("estimated_cost") or 0
+            try:
+                total_estimated_cost += Decimal(str(estimated))
+            except Exception:
+                pass
+
+        logger.info(
+            f"💰 Estimated total video cost: {total_estimated_cost}"
+        )
+
+        # -------------------------------------------------
+        # 3️⃣ Budget Guardrail Enforcement
+        # -------------------------------------------------
+        check_video_budget(
+            estimated_video_cost=total_estimated_cost,
+            user_role=self.user_role,
+        )
+
+        check_daily_budget(
+            db=self.db,
+            estimated_video_cost=total_estimated_cost,
+            user_role=self.user_role,
+        )
+
+        # -------------------------------------------------
+        # 4️⃣ Enforce single active video per script
         # -------------------------------------------------
         active_video = (
             self.db.query(Video)
@@ -103,7 +162,7 @@ class VideoOrchestrator:
             raise ValueError("Active video already exists for this script")
 
         # -------------------------------------------------
-        # 3️⃣ Create Video (DRAFT → rendering)
+        # 5️⃣ Create Video
         # -------------------------------------------------
         video = Video(
             script_id=script.id,
@@ -112,6 +171,7 @@ class VideoOrchestrator:
             description=(script.description or script.content or "")[:1000],
             status="rendering",
             is_active=1,
+            estimated_total_cost=total_estimated_cost,  # ✅ store estimate
             created_at=datetime.now(timezone.utc),
         )
 
@@ -119,8 +179,10 @@ class VideoOrchestrator:
         self.db.commit()
         self.db.refresh(video)
 
+        logger.info(f"🎬 Created Video id={video.id}")
+
         # -------------------------------------------------
-        # 4️⃣ Create orchestration job (instant success)
+        # 6️⃣ Orchestration marker job
         # -------------------------------------------------
         orchestrator_job = VideoJob(
             script_id=script.id,
@@ -138,7 +200,7 @@ class VideoOrchestrator:
         self.db.commit()
 
         # -------------------------------------------------
-        # 5️⃣ Determine if TTS is required (Category-based)
+        # 7️⃣ TTS check
         # -------------------------------------------------
         category = (
             self.db.query(Category)
@@ -152,9 +214,6 @@ class VideoOrchestrator:
         category_name = (category.name or "").upper()
         tts_required = "ASMR" not in category_name
 
-        # -------------------------------------------------
-        # 6️⃣ TTS REQUIRED → create exactly ONE TTS job
-        # -------------------------------------------------
         if tts_required:
             logger.info(
                 f"🔊 TTS required → creating TTS job "
@@ -187,7 +246,7 @@ class VideoOrchestrator:
             }
 
         # -------------------------------------------------
-        # 7️⃣ ASMR → NO TTS → create scene jobs immediately
+        # 8️⃣ ASMR → Create Scene Jobs
         # -------------------------------------------------
         logger.info(
             f"🎬 ASMR detected → creating scene jobs immediately "
@@ -197,17 +256,16 @@ class VideoOrchestrator:
         scene_orchestrator = SceneJobOrchestrator(
             db=self.db,
             script_id=script.id,
-            scenes=script.scene_timings,
+            scenes=scenes,
             voice_length_seconds=script.estimated_watch_time_sec,
-            provider=self.video_provider,
+            provider=None,
             quality="STANDARD",
+            cost_mode=self.cost_mode,
+            category_name=category_name,
         )
 
         scene_orchestrator.run()
 
-        # -------------------------------------------------
-        # 8️⃣ Return dispatch info
-        # -------------------------------------------------
         return {
             "video_id": video.id,
             "status": "rendering",
