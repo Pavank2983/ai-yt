@@ -256,6 +256,7 @@ class VideoOrchestrator:
         scene_orchestrator = SceneJobOrchestrator(
             db=self.db,
             script_id=script.id,
+            video_id=video.id,
             scenes=scenes,
             voice_length_seconds=script.estimated_watch_time_sec,
             provider=None,
