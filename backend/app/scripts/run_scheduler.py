@@ -262,7 +262,7 @@ def process_queued_jobs():
                     except Exception:
                         meta = {}
 
-                if meta.get("image_motion", False):
+                if meta.get("image_motion") or job.mode == "image_motion":
 
                     scheduler_logger.info(
                         f"🎞️ Image Motion execution for VideoJob {job.id}"

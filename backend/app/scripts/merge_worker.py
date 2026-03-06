@@ -191,7 +191,7 @@ def _verticalize(inp: str, out: str):
     ])
 
 # ============================================================
-# MERGE EXECUTION (FIXED + VERBOSE LOGGING)
+# MERGE EXECUTION
 # ============================================================
 def process_merge_job(mj: VideoMergeJob, db):
     logger.info(
@@ -260,44 +260,49 @@ def process_merge_job(mj: VideoMergeJob, db):
         voices_dir = asset_paths.voice_dir(sid)
         logger.info("🔊 Voice directory: %s", voices_dir)
 
-        if not os.path.exists(voices_dir):
-            raise RuntimeError("Voice directory does not exist")
+        voice_files = []
 
-        voice_files = sorted(
-            f for f in os.listdir(voices_dir) if f.endswith(".mp3")
-        )
+        if os.path.exists(voices_dir):
+            voice_files = sorted(
+                f for f in os.listdir(voices_dir) if f.endswith(".mp3")
+            )
 
         logger.info("🎙 Voice files found: %s", voice_files)
 
-        if not voice_files:
-            raise RuntimeError("No voice file found")
+        if voice_files:
 
-        voice_path = os.path.join(voices_dir, voice_files[0])
-        logger.info("🎤 Using voice file: %s", voice_path)
+            voice_path = os.path.join(voices_dir, voice_files[0])
+            logger.info("🎤 Using voice file: %s", voice_path)
 
-        # ----------------------------------------------------
-        # 5️⃣ Align video to voice duration
-        # ----------------------------------------------------
-        dur = _ffprobe_duration(voice_path)
-        logger.info("⏱ Voice duration: %s seconds", dur)
 
-        if not dur:
-            raise RuntimeError("Unable to read voice duration")
+            # ----------------------------------------------------
+            # 5️⃣ Align video to voice duration
+            # ----------------------------------------------------
+            dur = _ffprobe_duration(voice_path)
+            logger.info("⏱ Voice duration: %s seconds", dur)
 
-        aligned = tmp + ".aligned.mp4"
-        logger.info("🧮 Aligning video to voice duration")
-        _align_to_duration(tmp, dur, aligned)
-        os.replace(aligned, tmp)
-        logger.info("✅ Alignment complete")
+            if not dur:
+                raise RuntimeError("Unable to read voice duration")
 
-        # ----------------------------------------------------
-        # 6️⃣ Mix voice into video
-        # ----------------------------------------------------
-        mixed = tmp + ".voice.mp4"
-        logger.info("🎛 Mixing voice into video")
-        _mix_voice(tmp, voice_path, mixed)
-        os.replace(mixed, tmp)
-        logger.info("✅ Voice mixing complete")
+            aligned = tmp + ".aligned.mp4"
+            logger.info("🧮 Aligning video to voice duration")
+            _align_to_duration(tmp, dur, aligned)
+            os.replace(aligned, tmp)
+
+            logger.info("✅ Alignment complete")
+
+            # ----------------------------------------------------
+            # 6️⃣ Mix voice into video
+            # ----------------------------------------------------
+            mixed = tmp + ".voice.mp4"
+            logger.info("🎛 Mixing voice into video")
+            _mix_voice(tmp, voice_path, mixed)
+            os.replace(mixed, tmp)
+
+            logger.info("✅ Voice mixing complete")
+
+        else:
+            logger.info("🔇 No voice track detected → treating as ASMR video")
 
         # ----------------------------------------------------
         # 7️⃣ Vertical conversion

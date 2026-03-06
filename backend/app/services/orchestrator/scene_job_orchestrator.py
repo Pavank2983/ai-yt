@@ -42,8 +42,7 @@ DEFAULT_PROVIDER = os.getenv("AI_VIDEO_PROVIDER", "MINIMAX").upper()
 class SceneJobOrchestrator:
     """
     Orchestrator responsibilities:
-    - deactivate previous active video (soft 1:1)
-    - create new Video draft
+    - receive existing Video from VideoOrchestrator
     - create scene folders + prompt/meta files
     - create VideoJob rows
     - write manifest.json + merge_task.json
@@ -54,6 +53,7 @@ class SceneJobOrchestrator:
         self,
         db: Optional[Session],
         script_id: int,
+        video_id: int,
         scenes: List[Dict[str, Any]],
         voice_length_seconds: float,
         provider: Optional[str],
@@ -69,6 +69,7 @@ class SceneJobOrchestrator:
             self.db = db
 
         self.script_id = script_id
+        self.video_id = video_id
         self.scenes = scenes
         self.voice_length_seconds = voice_length_seconds
         self.provider = (provider or DEFAULT_PROVIDER).upper()
@@ -78,8 +79,17 @@ class SceneJobOrchestrator:
 
     # ------------------------------------------------------
     def run(self) -> Dict[str, Any]:
-        return self.create_video_and_scene_jobs(
+        
+        logger.info(
+            f"🚀 SceneJobOrchestrator START | "
+            f"script_id={self.script_id} | "
+            f"video_id={self.video_id} | "
+            f"scene_count={len(self.scenes)}"
+        )
+        
+        return self.create_scene_jobs(
             script_id=self.script_id,
+            video_id=self.video_id,
             scenes=self.scenes,
             voice_length_seconds=self.voice_length_seconds,
             provider=self.provider,
@@ -107,9 +117,10 @@ class SceneJobOrchestrator:
     # Main
     # ------------------------------------------------------
 
-    def create_video_and_scene_jobs(
+    def create_scene_jobs(
         self,
         script_id: int,
+        video_id: int,
         scenes: List[Dict[str, Any]],
         voice_length_seconds: Optional[float],
         provider: Optional[str],
@@ -120,50 +131,63 @@ class SceneJobOrchestrator:
         created_job_ids: List[int] = []
         merge_job_id = None
 
-        # ✅ Cost Intelligence (minimal additive)
+        # ✅ Cost Intelligence
         total_estimated_cost = Decimal("0.0000")
         provider_cost_breakdown: Dict[str, Decimal] = {}
 
         try:
+            # --------------------------------------------------
             # 1️⃣ Load Script
+            # --------------------------------------------------
+            
+            logger.info(
+                f"📦 SceneJobOrchestrator INPUT | "
+                f"script_id={script_id} | "
+                f"video_id={video_id} | "
+                f"scenes_received={len(scenes)} | "
+                f"voice_length={voice_length_seconds}"
+            )
+            
             script = (
                 self.db.query(Script)
                 .filter(Script.id == script_id)
                 .first()
             )
+            
+            logger.info(
+                f"📄 Script Loaded | "
+                f"id={script.id} | "
+                f"title={script.title}"
+            )
+            
             if not script:
                 raise ValueError(f"Script {script_id} not found")
 
-            # 2️⃣ Deactivate previous active video
-            self.db.query(Video).filter(
-                Video.script_id == script.id,
-                Video.is_active == True,
-            ).update({"is_active": False})
-            self.db.flush()
-
-            # 3️⃣ Create new Video draft
-            new_video = Video(
-                script_id=script.id,
-                category_id=script.category_id,
-                title=script.title or f"AI Video {script.id}",
-                description=(script.content or "")[:1000],
-                ai_provider=default_provider,
-                generation_mode="AI",
-                status="rendering",
-                video_length=voice_length_seconds or 0,
-                is_active=True,
-                created_at=datetime.now(timezone.utc),
+            # --------------------------------------------------
+            # 2️⃣ Load Existing Video (Created by VideoOrchestrator)
+            # --------------------------------------------------
+            video = (
+                self.db.query(Video)
+                .filter(Video.id == video_id)
+                .first()
+            )
+            
+            logger.info(
+                f"🎬 Video Loaded | "
+                f"id={video_id} | "
+                f"script_id={video.script_id} | "
+                f"status={video.status}"
             )
 
-            self.db.add(new_video)
-            self.db.flush()
-            self.db.refresh(new_video)
+            if not video:
+                raise ValueError(f"Video {video_id} not found")
 
-            video_id = new_video.id
-            logger.info(f"🎬 Created Video id={video_id} for Script={script.id}")
+            logger.info(
+                f"🎬 Using existing Video id={video_id} for Script={script.id}"
+            )
 
             # --------------------------------------------------
-            # 4️⃣ Folder setup
+            # 3️⃣ Folder setup
             # --------------------------------------------------
 
             scenes_root = asset_paths.scenes_dir(script.id)
@@ -185,9 +209,13 @@ class SceneJobOrchestrator:
             }
 
             # --------------------------------------------------
-            # 5️⃣ Scene jobs (Routing-aware)
+            # 4️⃣ Scene jobs
             # --------------------------------------------------
+            logger.info(f"🎞 Creating scene jobs | total_scenes={len(scenes)}")
             for s in scenes:
+                logger.info(
+                    f"🔍 Scene raw data: {json.dumps(s, ensure_ascii=False)}"
+                )
                 raw_index = (
                     s.get("scene_index")
                     or s.get("index")
@@ -202,6 +230,10 @@ class SceneJobOrchestrator:
                     if int(raw_index) > 0
                     else int(raw_index)
                 )
+                
+                logger.info(
+                    f"📌 Scene index resolved | raw_index={raw_index} → scene_index={scene_index}"
+                )
 
                 duration = int(
                     s.get("duration_sec")
@@ -210,15 +242,20 @@ class SceneJobOrchestrator:
                 )
 
                 # --------------------------------------------------
-                # Prompt (robust visual fallback)
+                # Prompt fallback logic
                 # --------------------------------------------------
+
                 scene_prompt = (
                     s.get("scene_prompt")
-                    or s.get("visual_prompt")   # ✅ NEW (critical fix)
+                    or s.get("visual_prompt")
                     or s.get("prompt")
                     or s.get("summary")
-                    or s.get("narration")       # ✅ fallback for story scenes
+                    or s.get("narration")
                     or f"Cinematic scene based on: {script.title}"
+                )
+                
+                logger.info(
+                    f"🖼 Scene prompt prepared | scene_index={scene_index}"
                 )
 
                 if not isinstance(scene_prompt, str):
@@ -248,9 +285,10 @@ class SceneJobOrchestrator:
                     },
                 )
 
-                # ------------------------------
-                # Cost Optimization Routing
-                # ------------------------------
+                # --------------------------------------------------
+                # Provider routing
+                # --------------------------------------------------
+
                 decision = choose_provider(
                     scene_index=scene_index,
                     total_scenes=len(scenes),
@@ -263,8 +301,8 @@ class SceneJobOrchestrator:
                 provider_tier = decision["provider_tier"]
                 mode = decision["mode"]
                 estimated_cost = decision["estimated_cost"]
-                
-                # ✅ Accumulate estimated cost (no logic change)
+                scene_type = decision["scene_type"]
+
                 try:
                     cost_decimal = Decimal(str(estimated_cost or 0))
                 except Exception:
@@ -274,15 +312,15 @@ class SceneJobOrchestrator:
 
                 provider_cost_breakdown.setdefault(scene_provider, Decimal("0.0000"))
                 provider_cost_breakdown[scene_provider] += cost_decimal
-                
-                scene_type = decision["scene_type"]
 
                 logger.info(
-                    f"🎞 Scene {scene_index} → "
-                    f"provider={scene_provider}, "
-                    f"tier={provider_tier}, "
-                    f"mode={mode}, "
-                    f"type={scene_type}"
+                    f"🧠 Routing decision | "
+                    f"scene_index={scene_index} | "
+                    f"provider={scene_provider} | "
+                    f"tier={provider_tier} | "
+                    f"mode={mode} | "
+                    f"type={scene_type} | "
+                    f"estimated_cost={estimated_cost}"
                 )
 
                 job = VideoJob(
@@ -313,6 +351,14 @@ class SceneJobOrchestrator:
                 self.db.add(job)
                 self.db.flush()
                 self.db.refresh(job)
+                
+                logger.info(
+                    f"✅ VideoJob created | "
+                    f"job_id={job.id} | "
+                    f"video_id={video_id} | "
+                    f"scene_index={scene_index} | "
+                    f"provider={scene_provider}"
+                )
 
                 created_job_ids.append(job.id)
 
@@ -327,21 +373,18 @@ class SceneJobOrchestrator:
                     "duration_sec": duration,
                 })
 
-            # ✅ Persist Estimated Cost into Video (minimal)
-            try:
-                new_video.estimated_total_cost = total_estimated_cost
-                new_video.cost_breakdown_json = json.dumps(
-                    {k: float(v) for k, v in provider_cost_breakdown.items()},
-                    ensure_ascii=False,
-                )
-                self.db.add(new_video)
-                self.db.flush()
-            except Exception as e:
-                logger.warning(f"Cost persistence failed: {e}")
-                raise
+            # --------------------------------------------------
+            # Persist cost to Video
+            # --------------------------------------------------
+
+            video.estimated_total_cost = total_estimated_cost
+            video.cost_breakdown_json = json.dumps(
+                {k: float(v) for k, v in provider_cost_breakdown.items()},
+                ensure_ascii=False,
+            )
 
             # --------------------------------------------------
-            # 6️⃣ Write manifest + merge task
+            # Write manifest + merge task
             # --------------------------------------------------
 
             manifest_path = asset_paths.scenes_manifest_path(script.id)
@@ -361,36 +404,59 @@ class SceneJobOrchestrator:
             self._write_json(merge_task_path, merge_task)
 
             # --------------------------------------------------
-            # 7️⃣ Create merge job row
+            # Create merge job
             # --------------------------------------------------
 
             try:
                 from app.models.video_merge_job import VideoMergeJob, MergeStatus
 
-                mj = VideoMergeJob(
-                    video_id=video_id,
-                    script_id=script.id,
-                    scene_count=len(scenes),
-                    status=MergeStatus.pending,
-                    quality=quality,
-                    created_at=datetime.now(timezone.utc),
+                existing = (
+                    self.db.query(VideoMergeJob)
+                    .filter(VideoMergeJob.video_id == video_id)
+                    .first()
                 )
-                self.db.add(mj)
-                self.db.flush()
-                self.db.refresh(mj)
-                merge_job_id = mj.id
+
+                if existing:
+                    logger.info(
+                        f"🧩 Merge job already exists for video_id={video_id}"
+                    )
+                    merge_job_id = existing.id
+                else:
+                    mj = VideoMergeJob(
+                        video_id=video_id,
+                        script_id=script.id,
+                        scene_count=len(scenes),
+                        status=MergeStatus.pending,
+                        quality=quality,
+                        created_at=datetime.now(timezone.utc),
+                    )
+
+                    self.db.add(mj)
+                    self.db.flush()
+                    self.db.refresh(mj)
+
+                    merge_job_id = mj.id
 
             except Exception as e:
                 logger.warning(f"Merge job create failed: {e}")
                 raise
 
             # --------------------------------------------------
-            # 8️⃣ Persist manifest in Video row
+            # Persist manifest to Video
             # --------------------------------------------------
 
-            new_video.assets_manifest = self._safe_json_dump(manifest)
-            self.db.add(new_video)
+            video.assets_manifest = self._safe_json_dump(manifest)
+            self.db.add(video)
             self.db.flush()
+
+            # 🔴 THIS IS THE MISSING STEP
+            self.db.commit()
+
+            logger.info(
+                f"💾 Scene jobs committed to DB | "
+                f"video_id={video_id} | "
+                f"jobs_created={len(created_job_ids)}"
+            )
 
             return {
                 "video_id": video_id,
