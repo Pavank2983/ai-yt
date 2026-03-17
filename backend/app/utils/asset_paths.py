@@ -112,3 +112,16 @@ def final_dir(script_id: int) -> str:
 
 def final_video_path(script_id: int) -> str:
     return os.path.join(final_dir(script_id), "final.mp4")
+
+def to_relative(path: str) -> str:
+    """
+    Convert absolute path inside project to relative assets path.
+    """
+
+    path = os.path.abspath(path)
+    root = os.path.abspath(os.getcwd())
+
+    if path.startswith(root):
+        path = path[len(root):]
+
+    return path.lstrip("\\/").replace("\\", "/")

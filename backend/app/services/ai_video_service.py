@@ -129,7 +129,9 @@ def submit_job_to_provider(job_id: int, db: Session = None) -> dict:
         # --------------------------------------------------
         if submit_result.get("file_path"):
             job.status = JobStatus.success
-            job.local_path = submit_result["file_path"]
+            # Normalize path before storing in DB
+            normalized_path = submit_result["file_path"].replace("\\", "/")
+            job.local_path = normalized_path
             job.completed_at = datetime.now(timezone.utc)
             job.updated_at = datetime.now(timezone.utc)
 
@@ -149,7 +151,7 @@ def submit_job_to_provider(job_id: int, db: Session = None) -> dict:
 
             return {
                 "status": "success",
-                "file_path": submit_result["file_path"],
+                "file_path": normalized_path,
             }
 
         if own_session:
@@ -300,6 +302,7 @@ def process_running_job(job_id: int, db: Session = None) -> dict:
         os.makedirs(scene_dir, exist_ok=True)
 
         final_path = os.path.join(scene_dir, "output.mp4")
+        final_path = final_path.replace("\\", "/")
 
         logger.info(
             f"⬇️ Downloading video | provider={provider} | job_id={job.id} | "

@@ -29,7 +29,8 @@ class JobStatus(str, enum.Enum):
 class JobMode(str, enum.Enum):
     video_api = "video_api"
     synthetic = "synthetic"
-    image_motion = "image_motion"   # ✅ NEW (Hybrid Engine Support)
+    image_motion = "image_motion"   # Hybrid Engine Support
+    thumbnail = "thumbnail"         # 🖼 Thumbnail generation worker
 
 
 class VideoJob(Base):
@@ -61,7 +62,7 @@ class VideoJob(Base):
         # Ordering
         Index("idx_video_jobs_created_at", "created_at"),
 
-        # ✅ NEW: Mode-based scheduling optimization
+        # Mode-based scheduling optimization
         Index("idx_video_jobs_mode", "mode"),
     )
 
@@ -91,7 +92,7 @@ class VideoJob(Base):
     # ---------------------------------------------------
     # Provider-specific fields
     # ---------------------------------------------------
-    provider = Column(String(50), nullable=True)  # MINIMAX, RUNWAY, SYNTHETIC, etc.
+    provider = Column(String(50), nullable=True)  # MINIMAX, RUNWAY, SYNTHETIC, THUMBNAIL, etc.
     provider_tier = Column(String(20), nullable=True)  # premium / standard / cheap / free
 
     mode = Column(

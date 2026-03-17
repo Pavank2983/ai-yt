@@ -14,10 +14,11 @@ __pycache__/
 # Output folders
 output/
 
-assets/
+assets/*.zip
 
 assets/music/
 assets/images/
 assets/voices/
 assets/videos/
 assets/templates/
+assets/cache/
