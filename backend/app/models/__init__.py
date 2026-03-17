@@ -14,6 +14,7 @@ from .script_generation_job import ScriptGenerationJob
 from .voice import Voice
 from .video_job import VideoJob
 from .video_merge_job import VideoMergeJob
+from .approval_token import ApprovalToken
 
 __all__ = [
     "User",
@@ -32,4 +33,5 @@ __all__ = [
     "Voice",
     "VideoJob",
     "VideoMergeJob",
+    "ApprovalToken",
 ]

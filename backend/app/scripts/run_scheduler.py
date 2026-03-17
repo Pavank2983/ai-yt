@@ -16,6 +16,8 @@ from app.services.ai_video_service import (
 )
 
 from app.services.voice_generation_service import run_tts_video_job
+from app.scripts.video_edit_worker import run_video_edit_job
+from app.scripts.thumbnail_worker import run_thumbnail_job
 from app.services.provider_router import choose_provider
 from app.services.performance_service import can_dispatch_job
 from app.services.engines.image_motion.image_motion_engine import (
@@ -202,6 +204,106 @@ def process_queued_jobs():
                 if job.is_tts:
                     process_tts_job(job, db)
                     continue
+                
+                # -------------------------------------------------
+                # 🎬 EDITOR JOB (LOCAL POST-PROCESSING)
+                # -------------------------------------------------
+                if job.provider == "EDITOR":
+
+                    job_id = job.id
+                    video_id = job.video_id
+
+                    scheduler_logger.info(
+                        f"🎬 Executing EDITOR job {job_id} (video_id={video_id})"
+                    )
+
+                    try:
+                        job.status = JobStatus.running
+                        job.started_at = datetime.now(timezone.utc)
+                        job.updated_at = datetime.now(timezone.utc)
+
+                        db.flush()
+                        db.commit()  # CLOSE scheduler transaction
+
+                        # ------------------------------------------------
+                        # Run editor OUTSIDE transaction
+                        # ------------------------------------------------
+                        run_video_edit_job(job_id, SessionLocal())
+
+                        scheduler_logger.info(
+                            f"✅ EDITOR job {job_id} completed"
+                        )
+
+                    except Exception as e:
+
+                        scheduler_logger.error(
+                            f"❌ EDITOR job {job_id} FAILED: {e}",
+                            exc_info=True,
+                        )
+
+                        db = SessionLocal()
+
+                        job = db.get(VideoJob, job_id)
+
+                        job.status = JobStatus.failed
+                        job.error_log = str(e)
+                        job.completed_at = datetime.now(timezone.utc)
+                        job.updated_at = datetime.now(timezone.utc)
+
+                        db.commit()
+                        db.close()
+
+                    continue
+                
+                # -------------------------------------------------
+                # 🖼 THUMBNAIL JOB (LOCAL POST-PROCESSING)
+                # -------------------------------------------------
+                if job.provider == "THUMBNAIL":
+
+                    job_id = job.id
+                    video_id = job.video_id
+
+                    scheduler_logger.info(
+                        f"🖼 Executing THUMBNAIL job {job_id} (video_id={video_id})"
+                    )
+
+                    try:
+                        job.status = JobStatus.running
+                        job.started_at = datetime.now(timezone.utc)
+                        job.updated_at = datetime.now(timezone.utc)
+
+                        db.flush()
+                        db.commit()  # CLOSE scheduler transaction
+
+                        # ------------------------------------------------
+                        # Run thumbnail worker OUTSIDE transaction
+                        # ------------------------------------------------
+                        run_thumbnail_job(job_id, SessionLocal())
+
+                        scheduler_logger.info(
+                            f"✅ THUMBNAIL job {job_id} completed"
+                        )
+
+                    except Exception as e:
+
+                        scheduler_logger.error(
+                            f"❌ THUMBNAIL job {job_id} FAILED: {e}",
+                            exc_info=True,
+                        )
+
+                        db = SessionLocal()
+
+                        job = db.get(VideoJob, job_id)
+
+                        job.status = JobStatus.failed
+                        job.error_log = str(e)
+                        job.completed_at = datetime.now(timezone.utc)
+                        job.updated_at = datetime.now(timezone.utc)
+
+                        db.commit()
+                        db.close()
+
+                    continue
 
                 # -------------------------------------------------
                 # ⏸️ SCENE JOBS MUST WAIT FOR TTS
@@ -259,6 +361,10 @@ def process_queued_jobs():
                 if job.meta:
                     try:
                         meta = json.loads(job.meta)
+
+                        # Normalize stored file paths
+                        if meta.get("file_path"):
+                            meta["file_path"] = meta["file_path"].replace("\\", "/")
                     except Exception:
                         meta = {}
 
@@ -286,9 +392,10 @@ def process_queued_jobs():
                             raise RuntimeError("Image motion generation failed")
 
                         # ✅ Persist output path (CRITICAL FOR MERGE WORKER)
-                        job.local_path = video_path
+                        normalized_path = video_path.replace("\\", "/")
+                        job.local_path = normalized_path
 
-                        meta["file_path"] = video_path
+                        meta["file_path"] = normalized_path
                         job.meta = json.dumps(meta)
 
                         job.status = JobStatus.success
@@ -296,7 +403,7 @@ def process_queued_jobs():
                         job.updated_at = datetime.now(timezone.utc)
 
                         scheduler_logger.info(
-                            f"✅ Image Motion SUCCESS | VideoJob {job.id} → {video_path}"
+                            f"✅ Image Motion SUCCESS | VideoJob {job.id} → {normalized_path}"
                         )
 
                         db.flush()
@@ -367,6 +474,7 @@ def process_running_jobs():
                 .filter(
                     VideoJob.status == JobStatus.running,
                     VideoJob.is_tts.is_(False),
+                    VideoJob.provider.notin_(["EDITOR", "THUMBNAIL"])
                 )
                 .order_by(VideoJob.updated_at.asc())
                 .with_for_update(skip_locked=True)

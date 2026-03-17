@@ -1,3 +1,4 @@
+from fastapi.staticfiles import StaticFiles
 import os
 import logging
 from logging.handlers import RotatingFileHandler
@@ -11,6 +12,8 @@ from dotenv import load_dotenv
 
 # Routes
 from app.routes import auth_route, scripts, voices, videos, dashboard
+from app.api.public import approval_links
+from app.api.webhooks import whatsapp_webhook
 
 # ✅ SINGLE SOURCE OF TRUTH — scheduler logic
 from app.scripts.run_scheduler import (
@@ -133,12 +136,20 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.mount(
+    "/assets",
+    StaticFiles(directory="assets"),
+    name="assets"
+)
+
 # Routers
 app.include_router(auth_route.router, tags=["Authentication"])
 app.include_router(scripts.router, tags=["Script Generation"])
 app.include_router(voices.router, tags=["TTS Voice Generation"])
 app.include_router(videos.router, tags=["Video Generation"])
 app.include_router(dashboard.router, tags=["Dashboard"])
+app.include_router(approval_links.router, tags=["Approval Video Links"])
+app.include_router(whatsapp_webhook.router, tags=["Whatsapp Webhooks"])
 
 # Root endpoint
 @app.get("/")

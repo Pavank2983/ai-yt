@@ -318,8 +318,49 @@ def process_merge_job(mj: VideoMergeJob, db):
 
         if video:
             logger.info("📝 Updating video DB record | video_id=%s", vid)
+
             video.file_url = final_path
-            # ❌ DO NOT set video.status here
+
+            # ----------------------------------------------------
+            # Dispatch EDITOR job for post-processing stage
+            # ----------------------------------------------------
+            existing_editor_job = (
+                db.query(VideoJob)
+                .filter(
+                    VideoJob.video_id == vid,
+                    VideoJob.provider == "EDITOR"
+                )
+                .first()
+            )
+
+            if not existing_editor_job:
+                logger.info("🛠 Dispatching EDITOR job | video_id=%s", vid)
+
+                editor_job = VideoJob(
+                    script_id=sid,
+                    video_id=vid,
+                    provider="EDITOR",
+                    provider_tier="LOCAL",
+                    mode="synthetic",
+                    scene_index=None,
+                    status=JobStatus.queued,
+                    meta=json.dumps({
+                        "type": "video_edit",
+                        "input_video": final_path
+                    }),
+                    created_at=datetime.now(timezone.utc)
+                )
+
+                db.add(editor_job)
+
+            else:
+                logger.info(
+                    "⚠ EDITOR job already exists | video_id=%s job_id=%s",
+                    vid,
+                    existing_editor_job.id
+                )
+
+            # approval should only happen AFTER editing stage
             video.approval_status = ApprovalStatus.pending_review
 
         mj.status = MergeStatus.success
