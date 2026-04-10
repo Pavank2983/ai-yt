@@ -208,7 +208,7 @@ Then open your browser and navigate to:
 | Field        | Value                     |
 | ------------ | ------------------------- |
 | **Email**    | `makeone.aihub@gmail.com` |
-| **Password** | `NJh1SBEFB4fIgL3i`        |
+| **Password** | `***************`       |
 
 ---
 
