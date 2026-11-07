@@ -9,7 +9,9 @@ import { Eye, EyeOff } from "lucide-react";
 import Link from "next/link";
 import AppLogo from "@/components/common/AppLogo";
 
-export default function LoginForm({ isModal = false }: any) {
+export default function LoginForm({
+    isModal = false,
+}: { isModal?: boolean; onClose?: () => void }) {
     const [loading, setLoading] = useState(false);
     const [errorMsg, setErrorMsg] = useState("");
 
@@ -60,8 +62,9 @@ export default function LoginForm({ isModal = false }: any) {
             console.log("Login Success:", data);
 
             window.location.href = "/dashboard";
-        } catch (err: any) {
-            const msg = friendlyMessages[err.message] || "Login failed. Try again.";
+        } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : "";
+            const msg = friendlyMessages[message] || "Login failed. Try again.";
             setErrorMsg(msg);
         } finally {
             setLoading(false);

@@ -34,6 +34,17 @@ export type StatusType =
     | "running"
     | "success";
 
+const STATUS_VALUES: StatusType[] = [
+    "draft", "rendering", "ready_for_review", "uploaded", "failed",
+    "pending_review", "approved", "rejected", "queued", "running", "success",
+];
+
+export function normalizeStatus(value: string): StatusType {
+    return STATUS_VALUES.includes(value as StatusType)
+        ? (value as StatusType)
+        : "draft";
+}
+
 /* ===================================================
    STATUS CONFIG (SINGLE SOURCE OF TRUTH)
 =================================================== */

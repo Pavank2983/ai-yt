@@ -16,9 +16,7 @@ import type { DashboardVideo } from "@/types/dashboard";
 
 export default function DashboardVideosPage() {
     const { user } = useAuth();
-    if (!user) return null;
-
-    const isViewer = user.role === "viewer";
+    const isViewer = user?.role === "viewer";
 
     const [search, setSearch] = useState("");
     const [filter, setFilter] = useState("all");
@@ -26,7 +24,10 @@ export default function DashboardVideosPage() {
     const { data: videos = [], isLoading } = useQuery<DashboardVideo[]>({
         queryKey: ["dashboard-videos"],
         queryFn: getDashboardVideos,
+        enabled: !!user,
     });
+
+    if (!user) return null;
 
     /* =========================
        ROLE VISIBILITY

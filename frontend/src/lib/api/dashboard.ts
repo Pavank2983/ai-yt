@@ -1,3 +1,9 @@
+import type {
+    DashboardJobsResponse,
+    DashboardMetrics,
+    DashboardVideo,
+} from "@/types/dashboard";
+
 const BASE_URL = process.env.NEXT_PUBLIC_BACKEND_API_URL;
 
 function getToken() {
@@ -24,36 +30,36 @@ async function apiFetch<T>(
         throw new Error(text || `API error: ${res.status}`);
     }
 
-    return res.json();
+    return res.json() as Promise<T>;
 }
 
 /* =========================
    Dashboard APIs
 ========================= */
 
-export const getDashboardMetrics = () =>
-    apiFetch("/dashboard/metrics");
+export const getDashboardMetrics = (): Promise<DashboardMetrics> =>
+    apiFetch<DashboardMetrics>("/dashboard/metrics");
 
-export const getDashboardJobs = () =>
-    apiFetch("/dashboard/jobs");
+export const getDashboardJobs = (): Promise<DashboardJobsResponse> =>
+    apiFetch<DashboardJobsResponse>("/dashboard/jobs");
 
-export const getDashboardVideos = () =>
-    apiFetch("/dashboard/videos");
+export const getDashboardVideos = (): Promise<DashboardVideo[]> =>
+    apiFetch<DashboardVideo[]>("/dashboard/videos");
 
 /* =========================
    Approval APIs
 ========================= */
 
-export const approveDashboardVideo = (videoId: number) =>
-    apiFetch(`/dashboard/videos/${videoId}/approve`, {
+export const approveDashboardVideo = (videoId: number): Promise<DashboardVideo> =>
+    apiFetch<DashboardVideo>(`/dashboard/videos/${videoId}/approve`, {
         method: "POST",
     });
 
 export const rejectDashboardVideo = (
     videoId: number,
     reason?: string
-) =>
-    apiFetch(`/dashboard/videos/${videoId}/reject`, {
+): Promise<DashboardVideo> =>
+    apiFetch<DashboardVideo>(`/dashboard/videos/${videoId}/reject`, {
         method: "POST",
         body: JSON.stringify({ reason }),
     });

@@ -1,3 +1,5 @@
+import type { SystemMetricsResponse } from "@/types/system";
+
 export async function getSystemMetrics() {
     const res = await fetch(
         `${process.env.NEXT_PUBLIC_BACKEND_API_URL}/dashboard/system-metrics`,
@@ -7,10 +9,10 @@ export async function getSystemMetrics() {
     );
 
     if (!res.ok) {
-        const error: any = new Error("Failed to fetch system metrics");
-        error.status = res.status;
+        const error = new Error("Failed to fetch system metrics");
+        Object.assign(error, { status: res.status });
         throw error;
     }
 
-    return res.json();
+    return res.json() as Promise<SystemMetricsResponse>;
 }

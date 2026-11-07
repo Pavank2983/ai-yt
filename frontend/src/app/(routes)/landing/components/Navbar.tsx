@@ -59,9 +59,11 @@ export default function Navbar() {
 
             {/* REGISTER MODAL */}
             <Dialog open={registerOpen} onOpenChange={setRegisterOpen}>
-                <DialogContent className="p-0 max-w-md rounded-xl overflow-hidden">
+                <DialogContent className="p-0 max-w-md max-h-[calc(100dvh-2rem)] rounded-xl overflow-hidden">
                     <VisuallyHidden><DialogTitle>Register</DialogTitle></VisuallyHidden>
-                    <RegisterForm isModal={true} onClose={() => setRegisterOpen(false)} />
+                    <div className="max-h-[calc(100dvh-2rem)] overflow-y-auto overflow-x-hidden overscroll-contain">
+                        <RegisterForm isModal={true} onClose={() => setRegisterOpen(false)} />
+                    </div>
                 </DialogContent>
             </Dialog>
 

@@ -32,7 +32,9 @@ const RuleRow = ({ ok, text }: { ok: boolean; text: string }) => (
 
 /* -------------------------------------------------------------------------- */
 
-export default function RegisterForm({ isModal = false }: any) {
+export default function RegisterForm({
+    isModal = false,
+}: { isModal?: boolean; onClose?: () => void }) {
     const [loading, setLoading] = useState(false);
     const [errorMsg, setErrorMsg] = useState("");
 
@@ -92,8 +94,8 @@ export default function RegisterForm({ isModal = false }: any) {
             console.log("Registration success:", result);
 
             window.location.href = "/login";
-        } catch (err: any) {
-            setErrorMsg(err.message);
+        } catch (err: unknown) {
+            setErrorMsg(err instanceof Error ? err.message : "Registration failed");
         } finally {
             setLoading(false);
         }

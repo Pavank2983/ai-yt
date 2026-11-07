@@ -91,15 +91,6 @@ export default function ScriptEditorPage() {
     const params = useParams();
     const scriptId = params?.id as string | undefined;
 
-    if (!scriptId) {
-        return (
-            <CenteredMessage
-                title="Invalid Script"
-                description="Script ID is missing or invalid."
-            />
-        );
-    }
-
     /* -------------------------------
        STATE
     -------------------------------- */
@@ -118,9 +109,17 @@ export default function ScriptEditorPage() {
         refetch,
     } = useQuery<ScriptResponse>({
         queryKey: ["script", scriptId],
-        queryFn: () => getScript(scriptId),
-        retry: (count, err: any) =>
-            ![401, 403, 404].includes(err?.status) && count < 2,
+        queryFn: () => {
+            if (!scriptId) throw new Error("Script ID is missing");
+            return getScript(scriptId);
+        },
+        enabled: !!scriptId,
+        retry: (count, err) => {
+            const status = err instanceof Error && "status" in err
+                ? (err as Error & { status?: number }).status
+                : undefined;
+            return ![401, 403, 404].includes(status ?? 0) && count < 2;
+        },
         refetchOnWindowFocus: false,
     });
 
@@ -128,7 +127,10 @@ export default function ScriptEditorPage() {
        MUTATION (ANALYZE)
     -------------------------------- */
     const analyzeMutation = useMutation({
-        mutationFn: () => analyzeScript(scriptId),
+        mutationFn: () => {
+            if (!scriptId) throw new Error("Script ID is missing");
+            return analyzeScript(scriptId);
+        },
         onSuccess: (res) => {
             setScenes(res.scenes || []);
         },
@@ -138,7 +140,10 @@ export default function ScriptEditorPage() {
         MUTATION (GENERATE VIDEO)
     -------------------------------- */
     const generateVideoMutation = useMutation({
-        mutationFn: () => generateVideo(scriptId),
+        mutationFn: () => {
+            if (!scriptId) throw new Error("Script ID is missing");
+            return generateVideo(scriptId);
+        },
         onSuccess: (res) => {
             // Redirect to video detail page
             if (res?.video_id) {
@@ -152,9 +157,21 @@ export default function ScriptEditorPage() {
     -------------------------------- */
     useEffect(() => {
         if (!data) return;
-        setTitle(data.title);
-        setContent(data.content);
+        const timer = window.setTimeout(() => {
+            setTitle(data.title);
+            setContent(data.content);
+        }, 0);
+        return () => window.clearTimeout(timer);
     }, [data]);
+
+    if (!scriptId) {
+        return (
+            <CenteredMessage
+                title="Invalid Script"
+                description="Script ID is missing or invalid."
+            />
+        );
+    }
 
     /* -------------------------------
        ERROR STATES
@@ -169,7 +186,9 @@ export default function ScriptEditorPage() {
     }
 
     if (isError) {
-        const status = (error as any)?.status;
+        const status = error instanceof Error && "status" in error
+            ? (error as Error & { status?: number }).status
+            : undefined;
 
         if (status === 401)
             return <CenteredMessage title="Unauthorized" />;

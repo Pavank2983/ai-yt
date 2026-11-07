@@ -17,18 +17,16 @@
     "isolatedModules": true,
     "jsx": "react-jsx",
     "incremental": true,
-    "ignoreDeprecations": "6.0", // ← Added line (fixes warning)
     "plugins": [
       {
         "name": "next"
       }
     ],
-    /* Aliases */
-    "baseUrl": ".", // ← Required for Next.js aliasing
+    "baseUrl": ".",
     "paths": {
       "@/*": [
         "src/*"
-      ] // ← Correct path mapping
+      ]
     }
   },
   "include": [

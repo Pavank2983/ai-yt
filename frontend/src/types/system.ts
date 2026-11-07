@@ -1,14 +1,25 @@
-export interface ProviderHealth {
-    name: string;
-    success_count: number;
-    failed_count: number;
-    failure_rate: number;
-}
-
 export interface SystemMetricsResponse {
-    total_spent_today: number;
-    projected_spend_today: number;
-    budget_limit_per_day: number;
-    avg_processing_time_sec: number;
-    provider_health: ProviderHealth[];
+    cost: {
+        today_spend: number;
+        total_spend_all_time: number;
+        spend_by_provider_24h: Record<string, number>;
+    };
+    videos: {
+        rendering: number;
+        ready_for_review: number;
+        failed_today: number;
+    };
+    jobs: {
+        queued: number;
+        running: number;
+        failed_today: number;
+        retry_rate_percent: number;
+        avg_render_time_seconds: number;
+    };
+    provider_health_24h: Record<string, {
+        total_jobs: number;
+        success_count: number;
+        failure_count: number;
+        success_rate_percent: number;
+    }>;
 }

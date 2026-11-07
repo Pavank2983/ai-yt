@@ -24,9 +24,10 @@ export type ProviderKey =
 
 export interface AdminActiveJob {
     id: string | number;
-    title: string;
+    title?: string;
+    video_id?: number;
     provider: ProviderKey;
-    status: "queued" | "running";
+    status: string;
     startedAt?: string; // e.g. "5 mins ago"
     runtime?: string;   // e.g. "1m 12s"
 }
@@ -115,7 +116,7 @@ export default function AdminActiveJobsTable({
                                 {/* Job */}
                                 <td className="px-4 py-3">
                                     <p className="font-medium truncate max-w-[280px]">
-                                        {job.title}
+                                        {job.title ?? `Video #${job.video_id ?? job.id}`}
                                     </p>
                                     {job.startedAt && (
                                         <p className="text-xs text-muted-foreground mt-0.5">

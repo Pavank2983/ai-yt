@@ -37,9 +37,7 @@ import type {
 
 export default function DashboardOverviewPage() {
   const { user } = useAuth();
-  if (!user) return null;
-
-  const role = user.role;
+  const role = user?.role ?? "viewer";
   const isViewer = role === "viewer";
   const isEditor = role === "editor";
   const isAdmin = role === "admin";
@@ -51,6 +49,7 @@ export default function DashboardOverviewPage() {
   const { data: metrics } = useQuery<DashboardMetrics>({
     queryKey: ["dashboard-metrics"],
     queryFn: getDashboardMetrics,
+    enabled: !!user,
   });
 
   const { data: jobs } = useQuery<DashboardJobsResponse>({
@@ -62,7 +61,10 @@ export default function DashboardOverviewPage() {
   const { data: videos } = useQuery<DashboardVideo[]>({
     queryKey: ["dashboard-videos"],
     queryFn: getDashboardVideos,
+    enabled: !!user,
   });
+
+  if (!user) return null;
 
   /* =========================
      METRICS
@@ -109,7 +111,7 @@ export default function DashboardOverviewPage() {
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {metricKeys.map((key) => {
           const config = METRIC_CONFIG[key];
-          const value = metrics?.[key] ?? 0;
+          const value = key === "avgProcessingTime" ? 0 : metrics?.[key] ?? 0;
 
           return (
             <MetricsCard

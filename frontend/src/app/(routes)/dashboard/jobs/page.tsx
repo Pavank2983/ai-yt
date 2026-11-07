@@ -15,18 +15,18 @@ export default function DashboardJobsPage() {
     const { user } = useAuth();
 
     // Safety guard — viewer should never access jobs
-    if (!user || user.role === "viewer") {
-        return null;
-    }
-
-    const isAdmin = user.role === "admin";
-    const isEditor = user.role === "editor";
+    const isAdmin = user?.role === "admin";
+    const isEditor = user?.role === "editor";
 
     const { data: jobs } = useQuery<DashboardJobsResponse>({
         queryKey: ["dashboard-jobs"],
         queryFn: getDashboardJobs,
         enabled: isAdmin || isEditor,
     });
+
+    if (!user || user.role === "viewer") {
+        return null;
+    }
 
     /* =========================
        JOB DATA (SAFE)

@@ -90,3 +90,4 @@ lovable-uploads/
 
 # Local dev artifacts
 src/styles/*.css.map
+*.tsbuildinfo

@@ -24,20 +24,21 @@ export default function SystemObservabilityPage() {
     const { user } = useAuth();
     const router = useRouter();
 
-    if (!user) return null;
+    const isAdmin = user?.role === "admin";
 
-    const isAdmin = user.role === "admin";
+    const { data, isLoading, isError } = useQuery<SystemMetricsResponse>({
+        queryKey: ["system-metrics"],
+        queryFn: getSystemMetrics,
+        enabled: isAdmin,
+    });
+
+    if (!user) return null;
 
     // 🔒 Admin-only protection
     if (!isAdmin) {
         router.push("/dashboard");
         return null;
     }
-
-    const { data, isLoading, isError } = useQuery<SystemMetricsResponse>({
-        queryKey: ["system-metrics"],
-        queryFn: getSystemMetrics,
-    });
 
     if (isLoading) {
         return (
@@ -56,17 +57,23 @@ export default function SystemObservabilityPage() {
     }
 
     // 🔐 SAFE NUMERIC EXTRACTION
-    const total_spent_today = Number(data.total_spent_today ?? 0);
-    const projected_spend_today = Number(data.projected_spend_today ?? 0);
-    const budget_limit_per_day = Number(data.budget_limit_per_day ?? 0);
-    const avg_processing_time_sec = Number(data.avg_processing_time_sec ?? 0);
+    const total_spent_today = Number(data.cost.today_spend ?? 0);
+    const projected_spend_today = data.cost.spend_by_provider_24h["projected"] ?? null;
+    const budget_limit_per_day = Number(process.env.NEXT_PUBLIC_DAILY_BUDGET ?? 0) || null;
+    const avg_processing_time_sec = Number(data.jobs.avg_render_time_seconds ?? 0);
 
-    const provider_health = Array.isArray(data.provider_health)
-        ? data.provider_health
-        : [];
+    const provider_health = Object.entries(data.provider_health_24h).map(
+        ([name, provider]) => ({
+            name,
+            success_count: provider.success_count,
+            failed_count: provider.failure_count,
+            failure_rate: 1 - provider.success_rate_percent / 100,
+        })
+    );
 
     const budgetExceeded =
-        budget_limit_per_day > 0 &&
+        budget_limit_per_day !== null &&
+        projected_spend_today !== null &&
         projected_spend_today > budget_limit_per_day;
 
     return (
@@ -103,7 +110,9 @@ export default function SystemObservabilityPage() {
                         <Activity className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent className="text-2xl font-bold">
-                        ${projected_spend_today.toFixed(2)}
+                        {projected_spend_today === null
+                            ? "N/A"
+                            : `$${projected_spend_today.toFixed(2)}`}
                     </CardContent>
                 </Card>
 
@@ -115,7 +124,9 @@ export default function SystemObservabilityPage() {
                         <Server className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent className="text-2xl font-bold">
-                        ${budget_limit_per_day.toFixed(2)}
+                        {budget_limit_per_day === null
+                            ? "Not configured"
+                            : `$${budget_limit_per_day.toFixed(2)}`}
                     </CardContent>
                 </Card>
 

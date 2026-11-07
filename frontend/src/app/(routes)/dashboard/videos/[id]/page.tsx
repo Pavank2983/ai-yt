@@ -16,7 +16,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import StatusBadge, { StatusType } from "@/components/common/StatusBadge";
+import StatusBadge, { normalizeStatus } from "@/components/common/StatusBadge";
 
 import {
   Play,
@@ -34,9 +34,9 @@ import {
 import type { DashboardVideo } from "@/types/dashboard";
 
 interface VideoDetailPageProps {
-  params: {
+  params: Promise<{
     id: string;
-  };
+  }>;
 }
 
 export default function VideoDetailPage({ params }: VideoDetailPageProps) {
@@ -60,20 +60,23 @@ export default function VideoDetailPage({ params }: VideoDetailPageProps) {
   const videoId = video ? Number(video.id) : null;
 
   const approveMutation = useMutation({
-    mutationFn: () => approveDashboardVideo(videoId!),
+    mutationFn: () => {
+      if (videoId === null) throw new Error("Video is not loaded");
+      return approveDashboardVideo(videoId);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["dashboard-videos"] });
     },
-    enabled: !!videoId,
   });
 
   const rejectMutation = useMutation({
-    mutationFn: () =>
-      rejectDashboardVideo(videoId!, "Rejected by admin"),
+    mutationFn: () => {
+      if (videoId === null) throw new Error("Video is not loaded");
+      return rejectDashboardVideo(videoId, "Rejected by admin");
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["dashboard-videos"] });
     },
-    enabled: !!videoId,
   });
 
   /* =========================
@@ -104,8 +107,7 @@ export default function VideoDetailPage({ params }: VideoDetailPageProps) {
      STATUS NORMALIZATION
   ========================= */
 
-  const approvalStatus: StatusType =
-    video.approval_status ?? "pending_review";
+  const approvalStatus = normalizeStatus(video.approval_status ?? "pending_review");
 
   const canApprove =
     isAdmin &&
@@ -152,7 +154,7 @@ export default function VideoDetailPage({ params }: VideoDetailPageProps) {
           </h1>
 
           <div className="flex items-center gap-2">
-            <StatusBadge status={video.status as StatusType} />
+            <StatusBadge status={normalizeStatus(video.status)} />
             <StatusBadge status={approvalStatus} />
           </div>
 

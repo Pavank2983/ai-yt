@@ -13,7 +13,7 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/context/AuthContext";
-import StatusBadge, { StatusType } from "@/components/common/StatusBadge";
+import StatusBadge, { normalizeStatus } from "@/components/common/StatusBadge";
 
 /* ===================================================
    TYPES
@@ -22,10 +22,11 @@ import StatusBadge, { StatusType } from "@/components/common/StatusBadge";
 export interface VideoCardProps {
     video: {
         id: string | number;
-        title: string;
+        title?: string | null;
         thumbnail?: string | null;
-        status: StatusType;              // pipeline status
-        approval_status?: StatusType;    // approval status
+        thumbnail_url?: string | null;
+        status: string;              // pipeline status
+        approval_status?: string | null;    // approval status
         views?: string | number;
         duration?: string | null;
         date?: string | null;
@@ -42,6 +43,7 @@ export default function VideoCard({ video }: VideoCardProps) {
     const { user } = useAuth();
 
     const isViewer = user?.role === "viewer";
+    const thumbnail = video.thumbnail ?? video.thumbnail_url;
 
     const handleNavigate = () => {
         if (isViewer && video.external_url) {
@@ -65,10 +67,10 @@ export default function VideoCard({ video }: VideoCardProps) {
                 THUMBNAIL
             =================================================== */}
             <div className="relative aspect-[9/16] bg-muted overflow-hidden">
-                {video.thumbnail ? (
+                {thumbnail ? (
                     <Image
-                        src={video.thumbnail}
-                        alt={video.title}
+                        src={thumbnail}
+                        alt={video.title ?? "Video"}
                         fill
                         unoptimized
                         className="object-cover transition-transform duration-500 group-hover:scale-105"
@@ -87,14 +89,14 @@ export default function VideoCard({ video }: VideoCardProps) {
                     <>
                         {/* Pipeline Status */}
                         <div className="absolute top-2 right-2">
-                            <StatusBadge status={video.status} size="sm" />
+                            <StatusBadge status={normalizeStatus(video.status)} size="sm" />
                         </div>
 
                         {/* Approval Status */}
                         {video.approval_status && (
                             <div className="absolute top-2 left-2">
                                 <StatusBadge
-                                    status={video.approval_status}
+                                    status={normalizeStatus(video.approval_status)}
                                     size="sm"
                                 />
                             </div>
@@ -130,7 +132,7 @@ export default function VideoCard({ video }: VideoCardProps) {
             =================================================== */}
             <CardContent className="p-4 flex-1">
                 <h3 className="font-semibold leading-tight line-clamp-2 mb-2 group-hover:text-primary transition-colors">
-                    {video.title}
+                    {video.title ?? "Untitled Video"}
                 </h3>
 
                 <div className="flex items-center justify-between text-xs text-muted-foreground">

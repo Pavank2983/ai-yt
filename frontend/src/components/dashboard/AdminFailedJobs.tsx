@@ -7,9 +7,10 @@ import StatusBadge from "@/components/common/StatusBadge";
 
 export interface AdminFailedJob {
     id: string | number;
-    title: string;
+    title?: string;
+    video_id?: number;
     provider: string;
-    error?: string;
+    error?: string | null;
 }
 
 interface AdminFailedJobsProps {
@@ -59,7 +60,7 @@ export default function AdminFailedJobs({
                         {/* Job Info */}
                         <div className="min-w-0 space-y-1">
                             <p className="font-medium truncate">
-                                {job.title}
+                                {job.title ?? `Video #${job.video_id ?? job.id}`}
                             </p>
 
                             <p className="text-xs text-muted-foreground">

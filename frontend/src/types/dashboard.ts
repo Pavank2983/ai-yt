@@ -18,7 +18,8 @@ export type DashboardJobStatus =
     | "queued"
     | "running"
     | "success"
-    | "failed";
+    | "failed"
+    | (string & {});
 
 export type DashboardJob = {
     id: number;
@@ -26,6 +27,7 @@ export type DashboardJob = {
     provider: string;
     status: DashboardJobStatus;
     scene_index?: number | null;
+    error?: string | null;
     created_at: string;
 };
 
@@ -41,12 +43,23 @@ export type DashboardVideoStatus =
     | "draft"
     | "rendering"
     | "uploaded"
-    | "failed";
+    | "failed"
+    | "ready_for_review"
+    | "queued"
+    | "merging"
+    | "publishing"
+    | "approved"
+    | "rejected"
+    | (string & {});
 
 export type DashboardVideo = {
     id: number;
     title?: string | null;
     status: DashboardVideoStatus;
+    approval_status?: string | null;
+    approved_at?: string | null;
+    rejected_at?: string | null;
+    scheduled_at?: string | null;
     file_url?: string | null;
     thumbnail_url?: string | null;
     created_at: string;

@@ -8,9 +8,9 @@ export async function getScript(id: string) {
     );
 
     if (!res.ok) {
-        const error: any = new Error("Failed to fetch script");
-        error.status = res.status;
-        throw error;
+        throw Object.assign(new Error("Failed to fetch script"), {
+            status: res.status,
+        });
     }
 
     return res.json();
@@ -26,9 +26,7 @@ export async function analyzeScript(id: string) {
     );
 
     if (!res.ok) {
-        const error: any = new Error("Analyze failed");
-        error.status = res.status;
-        throw error;
+        throw Object.assign(new Error("Analyze failed"), { status: res.status });
     }
 
     return res.json();
@@ -47,9 +45,9 @@ export async function generateVideo(scriptId: string) {
     );
 
     if (!res.ok) {
-        const error: any = new Error("Video generation dispatch failed");
-        error.status = res.status;
-        throw error;
+        throw Object.assign(new Error("Video generation dispatch failed"), {
+            status: res.status,
+        });
     }
 
     return res.json();
