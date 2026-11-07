@@ -50,9 +50,12 @@ def get_token_record(db: Session, token: str) -> ApprovalToken | None:
 
 def mark_token_used(db: Session, token_record: ApprovalToken):
     """
-    Mark token as used to prevent replay.
+    Mark a locked token as used to prevent replay.
+
+    The caller owns the transaction. This deliberately does not commit so
+    token consumption can be committed atomically with the approval state
+    change and any follow-up work.
     """
 
     token_record.used_at = datetime.now(timezone.utc)
-
-    db.commit()
+    db.flush()

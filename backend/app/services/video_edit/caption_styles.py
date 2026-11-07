@@ -5,7 +5,7 @@ import re
 # ------------------------------------------------------------
 # Default caption style
 # ------------------------------------------------------------
-DEFAULT_STYLE = os.getenv("CAPTION_STYLE", "karaoke").lower()
+DEFAULT_STYLE = (os.getenv("CAPTION_STYLE") or "karaoke").lower()
 
 
 # ------------------------------------------------------------
@@ -16,6 +16,8 @@ ASS_HEADER = """
 ScriptType: v4.00+
 PlayResX: 1080
 PlayResY: 1920
+ScaledBorderAndShadow: yes
+YCbCr Matrix: TV.709
 
 [V4+ Styles]
 Format: Name,Fontname,Fontsize,PrimaryColour,OutlineColour,BackColour,Bold,Italic,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding
@@ -32,10 +34,10 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
 STYLES = {
 
     "bold_stroke":
-        "Style: BoldStroke,The Bold Font,118,&H00FFFFFF,&H00000000,&H00000000,-1,0,1,22,3,3,40,40,320,1",
+        "Style: BoldStroke,Arial Black,118,&H00FFFFFF,&H00000000,&H00000000,-1,0,1,22,3,3,40,40,320,1",
 
     "red_highlight":
-        "Style: RedHighlight,The Bold Font,108,&H00FFFFFF,&H00000000,&H00000000,-1,0,1,6,3,3,40,40,320,1",
+        "Style: RedHighlight,Arial Black,108,&H00FFFFFF,&H00000000,&H00000000,-1,0,1,6,3,3,40,40,320,1",
 
     "sleek":
         "Style: Sleek,Montserrat,92,&H00FFFFFF,&H00000000,&H00000000,-1,0,1,3,2,2,40,40,320,1",
@@ -113,7 +115,7 @@ def _emphasize_keywords(text: str):
         clean = re.sub(r"[.,!?]", "", word)
 
         if clean.upper() in keywords:
-            styled_words.append(f"{{\\fs120\\c&H00FFFF&}}{word}{{\\r}}")
+            styled_words.append(f"{{\\fs120\\1c&H00FFFF&\\bord6\\blur1}}{word}{{\\r}}")
         else:
             styled_words.append(word)
 
@@ -174,8 +176,8 @@ def _highlight_karaoke(text: str, start: str, end: str):
                 f"{{\\k{per_word}"
                 f"\\1c&H00FFFFFF&"
                 f"\\3c&H00F10E6D&"
-                f"\\bord14"
-                f"\\blur3"
+                f"\\bord8"
+                f"\\blur1"
                 f"\\shad3"
                 f"\\fsp2"
                 f"\\t(0,120,\\fscx108\\fscy108)"
@@ -245,7 +247,7 @@ def srt_to_ass(srt_path: str, style_name: str | None = None):
             start_sec = _time_to_seconds(start)
             end_sec = _time_to_seconds(end)
 
-            duration = (end_sec - start_sec) / len(chunks)
+            duration = (end_sec - start_sec) / max(len(chunks), 1)
 
             current = start_sec
 
@@ -257,7 +259,7 @@ def srt_to_ass(srt_path: str, style_name: str | None = None):
                 if style_name in ["karaoke", "red_highlight"]:
                     chunk = _highlight_karaoke(chunk, chunk_start, chunk_end)
 
-                chunk = f"{{\\t(0,150,\\fscx110\\fscy110)}}{chunk}"
+                chunk = f"{{\\t(0,120,\\fscx105\\fscy105)}}{chunk}"
 
                 events.append(
                     f"Dialogue: 0,{chunk_start},{chunk_end},{style_event},,0,0,0,,{chunk}"

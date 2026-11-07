@@ -131,8 +131,35 @@ def burn_subtitles(video_path: str, subtitle_path: str):
             "ffmpeg",
             "-y",
             "-i", video_path,
+
+            # -------------------------------
+            # 🎬 VIDEO QUALITY (CRITICAL FIX)
+            # -------------------------------
             "-vf", vf,
-            "-c:a", "copy",
+
+            "-c:v", "libx264",
+            "-preset", "slow",        # better compression quality
+            "-crf", "16",             # visually lossless (16–18 ideal)
+
+            "-profile:v", "high",
+            "-level", "4.2",
+            "-pix_fmt", "yuv420p",
+
+            "-b:v", "8M",
+            "-maxrate", "10M",
+            "-bufsize", "16M",
+
+            # -------------------------------
+            # 🔊 AUDIO (SAFE)
+            # -------------------------------
+            "-c:a", "aac",
+            "-b:a", "192k",
+
+            # -------------------------------
+            # ⚡ FAST START (YouTube friendly)
+            # -------------------------------
+            "-movflags", "+faststart",
+
             output_path
         ])
 

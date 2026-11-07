@@ -52,7 +52,12 @@ def approve_video(
     if current_user.role != "admin":
         raise HTTPException(status_code=403, detail="Admin only")
 
-    video = db.query(Video).filter(Video.id == video_id, Video.is_active == 1).first()
+    video = (
+        db.query(Video)
+        .filter(Video.id == video_id, Video.is_active == 1)
+        .with_for_update()
+        .first()
+    )
     if not video:
         raise HTTPException(status_code=404, detail="Video not found")
 
@@ -64,9 +69,12 @@ def approve_video(
             detail=f"Video is not ready for review (status={derived_status})",
         )
 
-    # Idempotent: already approved
+    # Idempotent only for a repeated approval. A rejected video must go
+    # through a new review cycle instead of being silently re-approved.
     if video.approval_status == ApprovalStatus.approved:
         return {"status": "already_approved"}
+    if video.approval_status != ApprovalStatus.pending_review:
+        raise HTTPException(status_code=409, detail="Video approval is already finalized")
 
     # Reject → approve is allowed
     video.approval_status = ApprovalStatus.approved
@@ -94,7 +102,12 @@ def reject_video(
     if current_user.role != "admin":
         raise HTTPException(status_code=403, detail="Admin only")
 
-    video = db.query(Video).filter(Video.id == video_id, Video.is_active == 1).first()
+    video = (
+        db.query(Video)
+        .filter(Video.id == video_id, Video.is_active == 1)
+        .with_for_update()
+        .first()
+    )
     if not video:
         raise HTTPException(status_code=404, detail="Video not found")
 
@@ -109,6 +122,8 @@ def reject_video(
     # Idempotent: already rejected
     if video.approval_status == ApprovalStatus.rejected:
         return {"status": "already_rejected"}
+    if video.approval_status != ApprovalStatus.pending_review:
+        raise HTTPException(status_code=409, detail="Video approval is already finalized")
 
     video.approval_status = ApprovalStatus.rejected
     video.rejected_at = datetime.now(timezone.utc)

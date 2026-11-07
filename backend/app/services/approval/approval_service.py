@@ -16,6 +16,8 @@ def process_approval_token(
     db: Session,
     token_record: ApprovalToken,
     acting_user: User | None = None,
+    *,
+    commit: bool = True,
 ):
     """
     Process approval or rejection based on token.
@@ -25,19 +27,41 @@ def process_approval_token(
     - prevents replay
     """
 
+    # Re-read both rows under database locks. The token object may have been
+    # loaded before another webhook delivery started its transaction.
+    locked_token = (
+        db.query(ApprovalToken)
+        .filter(ApprovalToken.id == token_record.id)
+        .with_for_update()
+        .one_or_none()
+    )
+    if locked_token is None:
+        raise ApprovalError("Token not found")
+
+    token_record = locked_token
+
     # -----------------------------
     # Validate token
     # -----------------------------
     if token_record.used_at is not None:
         raise ApprovalError("Token already used")
 
-    if token_record.expires_at < datetime.now(timezone.utc):
+    expires_at = token_record.expires_at
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+
+    if expires_at < datetime.now(timezone.utc):
         raise ApprovalError("Token expired")
 
     # -----------------------------
     # Fetch video
     # -----------------------------
-    video = db.query(Video).filter(Video.id == token_record.video_id).first()
+    video = (
+        db.query(Video)
+        .filter(Video.id == token_record.video_id)
+        .with_for_update()
+        .one_or_none()
+    )
 
     if not video:
         raise ApprovalError("Video not found")
@@ -74,6 +98,7 @@ def process_approval_token(
     # -----------------------------
     mark_token_used(db, token_record)
 
-    db.commit()
+    if commit:
+        db.commit()
 
     return video

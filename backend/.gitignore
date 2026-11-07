@@ -1,18 +1,30 @@
-# Virtual environment
-venv/
+# Virtual environments
+venv*/
+.venv*/
 
 # Python cache
 __pycache__/
-*.pyc
-*.pyo
+*.py[cod]
 *.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 
-# Environment & logs
+# Environment, secrets & logs
 .env
 *.log
+logs/
+client_secret.json
+credentials/
 
-# Output folders
+# Temporary and generated output
 output/
+tmp/
+temp/
+.cache/
+assets/output/
+assets/tmp/
+assets/generated/
 
 assets/*.zip
 

@@ -1,5 +1,5 @@
 from sqlalchemy import (
-    Column, Integer, String, Text, DateTime, ForeignKey
+    Boolean, Column, Integer, String, Text, DateTime, ForeignKey
 )
 from sqlalchemy.orm import relationship
 from app.db.database import Base
@@ -14,6 +14,9 @@ class Platform(Base):
     refresh_token = Column(Text)
     expires_at = Column(DateTime)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"))
+    enabled = Column(Boolean, default=True)
+    created_at = Column(DateTime)
+    updated_at = Column(DateTime)
 
     owner = relationship("User", back_populates="platforms")
     videos = relationship("Video", back_populates="platform", cascade="all, delete")

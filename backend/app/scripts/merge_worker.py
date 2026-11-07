@@ -138,8 +138,17 @@ def _crossfade(paths: List[str], out: str, duration: int):
                 f"[0:v][1:v]xfade=fade:duration={duration}:offset=0[v];"
                 f"[0:a][1:a]acrossfade=d={duration}[a]",
                 "-map", "[v]", "-map", "[a]",
-                "-c:v", "libx264", "-crf", "20",
+                "-c:v", "libx264",
+                "-preset", "slow",
+                "-crf", "17",
+                "-profile:v", "high",
+                "-level", "4.2",
+                "-pix_fmt", "yuv420p",
+                "-b:v", "8M",
+                "-maxrate", "10M",
+                "-bufsize", "16M",
                 "-c:a", "aac",
+                "-b:a", "192k",
                 tmp_out
             ])
         except Exception:
@@ -164,7 +173,9 @@ def _align_to_duration(video: str, target: float, out: str):
             "ffmpeg", "-y",
             "-i", video,
             "-vf", f"tpad=stop_mode=clone:stop_duration={diff}",
-            "-c:v", "libx264", "-crf", "20",
+            "-c:v", "libx264",
+            "-preset", "veryfast",   # fast since intermediate
+            "-crf", "18",
             "-an",
             out
         ])
@@ -185,8 +196,18 @@ def _verticalize(inp: str, out: str):
         "ffmpeg", "-y",
         "-i", inp,
         "-vf", "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920",
-        "-c:v", "libx264", "-crf", "20",
-        "-c:a", "copy",
+        "-c:v", "libx264",
+        "-preset", "slow",
+        "-crf", "17",
+        "-profile:v", "high",
+        "-level", "4.2",
+        "-pix_fmt", "yuv420p",
+        "-b:v", "8M",
+        "-maxrate", "10M",
+        "-bufsize", "16M",
+        "-movflags", "+faststart",
+        "-c:a", "aac",
+        "-b:a", "192k",
         out
     ])
 

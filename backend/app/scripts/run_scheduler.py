@@ -20,9 +20,12 @@ from app.scripts.video_edit_worker import run_video_edit_job
 from app.scripts.thumbnail_worker import run_thumbnail_job
 from app.services.provider_router import choose_provider
 from app.services.performance_service import can_dispatch_job
+from app.services.platforms.youtube_service import publish_video
 from app.services.engines.image_motion.image_motion_engine import (
     generate_image_motion_scene,
 )
+
+from app.utils.publish_time import get_publish_time
 
 # =============================================================
 # LOGGER
@@ -54,6 +57,14 @@ VIDEO_COST_MODE = os.getenv("VIDEO_COST_MODE", "balanced").lower()
 MAX_POLL_ATTEMPTS = int(os.getenv("MAX_POLL_ATTEMPTS", 5))
 JOB_STALE_MINUTES = int(os.getenv("JOB_STALE_MINUTES", 15))
 
+def ensure_utc(dt):
+    if not dt:
+        return None
+
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+
+    return dt
 
 # =============================================================
 # ♻️ STALE JOB RECOVERY
@@ -187,6 +198,17 @@ def process_queued_jobs():
 
             for job in queued_jobs:
 
+                # -------------------------------------------------
+                # ⏳ RETRY BACKOFF GUARD (CRITICAL)
+                # -------------------------------------------------
+                now = datetime.now(timezone.utc)
+
+                if job.updated_at and ensure_utc(job.updated_at) > now:
+                    scheduler_logger.info(
+                        f"⏳ Skipping job {job.id} (scheduled for retry at {job.updated_at})"
+                    )
+                    continue
+
                 # Skip marker jobs
                 if (
                     job.scene_index is None
@@ -293,6 +315,224 @@ def process_queued_jobs():
 
                         db = SessionLocal()
 
+                        job = db.get(VideoJob, job_id)
+
+                        job.status = JobStatus.failed
+                        job.error_log = str(e)
+                        job.completed_at = datetime.now(timezone.utc)
+                        job.updated_at = datetime.now(timezone.utc)
+
+                        db.commit()
+                        db.close()
+
+                    continue
+
+                # -------------------------------------------------
+                # 📅 PUBLISH JOB (SCHEDULED VISIBILITY SWITCH)
+                # -------------------------------------------------
+                if job.provider == "PUBLISH":
+
+                    job_id = job.id
+                    video_id = job.video_id
+
+                    scheduler_logger.info(
+                        f"📅 Evaluating PUBLISH job {job_id} (video_id={video_id})"
+                    )
+
+                    try:
+                        video = db.get(Video, video_id)
+                        approval_status = getattr(
+                            getattr(video, "approval_status", None),
+                            "value",
+                            getattr(video, "approval_status", None),
+                        )
+                        if not video or approval_status != "approved":
+                            job.status = JobStatus.failed
+                            job.error_log = "Publishing blocked: video is not approved"
+                            job.completed_at = datetime.now(timezone.utc)
+                            job.updated_at = datetime.now(timezone.utc)
+                            db.commit()
+                            scheduler_logger.warning(
+                                "Publishing job blocked because approval is not active | job_id=%s",
+                                job_id,
+                            )
+                            continue
+
+                        meta = {}
+                        if job.meta:
+                            try:
+                                meta = json.loads(job.meta)
+                            except Exception:
+                                meta = {}
+
+                        publish_at_str = meta.get("publish_at")
+
+                        if publish_at_str:
+                            publish_at = datetime.fromisoformat(publish_at_str)
+                            publish_at = ensure_utc(publish_at)
+                        else:
+                            # -------------------------------------------------
+                            # 🧠 FALLBACK → use ENV-based schedule (Option B)
+                            # -------------------------------------------------
+                            now = datetime.now(timezone.utc)
+                            publish_at = get_publish_time(now)
+
+                            if publish_at <= now:
+                                publish_at += timedelta(days=1)
+
+                        now = datetime.now(timezone.utc)
+
+                        # -------------------------------------------------
+                        # ⏳ NOT TIME YET → SKIP
+                        # -------------------------------------------------
+                        if now < publish_at:
+                            IST = timezone(timedelta(hours=5, minutes=30))
+
+                            scheduler_logger.info(
+                                f"⏳ Not time yet for publish job {job_id} | "
+                                f"publish_at_utc={publish_at} | "
+                                f"publish_at_ist={publish_at.astimezone(IST)}"
+                            )
+                            continue
+
+                        # -------------------------------------------------
+                        # 🚀 EXECUTE PUBLISH
+                        # -------------------------------------------------
+                        job.status = JobStatus.running
+                        job.started_at = now
+                        job.updated_at = now
+
+                        db.flush()
+                        db.commit()  # EXIT TRANSACTION
+
+                        # -------------------------------------------------
+                        # CALL YOUTUBE SERVICE
+                        # -------------------------------------------------
+                        publish_video(video_id)
+
+                        # -------------------------------------------------
+                        # MARK SUCCESS
+                        # -------------------------------------------------
+                        db = SessionLocal()
+                        job = db.get(VideoJob, job_id)
+
+                        job.status = JobStatus.success
+                        job.completed_at = datetime.now(timezone.utc)
+                        job.updated_at = datetime.now(timezone.utc)
+
+                        # -------------------------------------------------
+                        # 🔑 UPDATE VIDEO STATUS
+                        # -------------------------------------------------
+                        video = db.get(Video, video_id)
+                        if video:
+                            video.status = "published"
+
+                        db.commit()
+                        db.close()
+
+                        scheduler_logger.info(
+                            f"🚀 PUBLISH job {job_id} completed → video is now PUBLIC"
+                        )
+
+                    except Exception as e:
+
+                        scheduler_logger.error(
+                            f"❌ PUBLISH job {job_id} FAILED: {e}",
+                            exc_info=True,
+                        )
+
+                        db = SessionLocal()
+                        job = db.get(VideoJob, job_id)
+
+                        job.status = JobStatus.failed
+                        job.error_log = str(e)
+                        job.completed_at = datetime.now(timezone.utc)
+                        job.updated_at = datetime.now(timezone.utc)
+
+                        db.commit()
+                        db.close()
+
+                    continue
+
+                # -------------------------------------------------
+                # 📤 UPLOAD JOB (INSTANT - NO POLLING)
+                # -------------------------------------------------
+                if job.provider == "UPLOAD":
+
+                    job_id = job.id
+                    video_id = job.video_id
+
+                    scheduler_logger.info(
+                        f"📤 Executing UPLOAD job {job_id} (video_id={video_id})"
+                    )
+
+                    try:
+                        video = db.get(Video, video_id)
+                        approval_status = getattr(
+                            getattr(video, "approval_status", None),
+                            "value",
+                            getattr(video, "approval_status", None),
+                        )
+                        if not video or approval_status != "approved":
+                            job.status = JobStatus.failed
+                            job.error_log = "Upload blocked: video is not approved"
+                            job.completed_at = datetime.now(timezone.utc)
+                            job.updated_at = datetime.now(timezone.utc)
+                            db.commit()
+                            scheduler_logger.warning(
+                                "Upload job blocked because approval is not active | job_id=%s",
+                                job_id,
+                            )
+                            continue
+
+                        job.status = JobStatus.running
+                        job.started_at = datetime.now(timezone.utc)
+                        job.updated_at = datetime.now(timezone.utc)
+
+                        db.flush()
+                        db.commit()  # CLOSE scheduler transaction
+
+                        # ------------------------------------------------
+                        # Run upload OUTSIDE transaction
+                        # ------------------------------------------------
+                        upload_result = submit_job_to_provider(job_id)
+
+                        # The upload service owns retry/failure persistence.
+                        # Do not overwrite a queued retry or terminal failure
+                        # with success here.
+                        if not isinstance(upload_result, dict) or upload_result.get("status") != "success":
+                            scheduler_logger.warning(
+                                "Upload job did not complete successfully | job_id=%s | status=%s",
+                                job_id,
+                                upload_result.get("status") if isinstance(upload_result, dict) else "unknown",
+                            )
+                            continue
+
+                        # ------------------------------------------------
+                        # Mark SUCCESS (CRITICAL FIX)
+                        # ------------------------------------------------
+                        db = SessionLocal()
+                        job = db.get(VideoJob, job_id)
+
+                        job.status = JobStatus.success
+                        job.completed_at = datetime.now(timezone.utc)
+                        job.updated_at = datetime.now(timezone.utc)
+
+                        db.commit()
+                        db.close()
+
+                        scheduler_logger.info(
+                            f"✅ UPLOAD job {job_id} completed"
+                        )
+
+                    except Exception as e:
+
+                        scheduler_logger.error(
+                            f"❌ UPLOAD job {job_id} FAILED: {e}",
+                            exc_info=True,
+                        )
+
+                        db = SessionLocal()
                         job = db.get(VideoJob, job_id)
 
                         job.status = JobStatus.failed
@@ -474,7 +714,7 @@ def process_running_jobs():
                 .filter(
                     VideoJob.status == JobStatus.running,
                     VideoJob.is_tts.is_(False),
-                    VideoJob.provider.notin_(["EDITOR", "THUMBNAIL"])
+                    VideoJob.provider.notin_(["EDITOR", "THUMBNAIL", "UPLOAD"])
                 )
                 .order_by(VideoJob.updated_at.asc())
                 .with_for_update(skip_locked=True)

@@ -15,6 +15,7 @@ from .voice import Voice
 from .video_job import VideoJob
 from .video_merge_job import VideoMergeJob
 from .approval_token import ApprovalToken
+from .video_platform_status import VideoPlatformStatus
 
 __all__ = [
     "User",
@@ -34,4 +35,5 @@ __all__ = [
     "VideoJob",
     "VideoMergeJob",
     "ApprovalToken",
+    "VideoPlatformStatus",
 ]

@@ -124,6 +124,27 @@ OPENAI_API_KEY
 - Secrets are never committed to the repository
 - .env files are local-only and ignored by git
 
+### WhatsApp approvals
+
+The WhatsApp approval webhook requires all of the following local environment
+variables; there are no fallback secrets:
+
+```
+WHATSAPP_WEBHOOK_VERIFY_TOKEN
+META_APP_SECRET
+ADMIN_PHONE
+```
+
+POST deliveries must include Meta's `X-Hub-Signature-256` HMAC-SHA256 header.
+Only the configured administrator phone number may approve or reject a video.
+Approval state, one-time token consumption, and upload-job creation are
+committed in one database transaction.  Replayed, expired, unauthorized, or
+invalid deliveries are rejected without publishing work.
+
+Platform upload status rows are unique per `(video_id, platform_id)`. Existing
+duplicate rows must be reconciled before applying the corresponding Alembic
+migration; the migration does not delete or rewrite status history.
+
 ---
 
 ## 6. File System & Paths

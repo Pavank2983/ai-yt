@@ -32,6 +32,7 @@ if not logger.handlers:
 
 WHATSAPP_ACCESS_TOKEN = os.getenv("WHATSAPP_ACCESS_TOKEN")
 WHATSAPP_PHONE_ID = os.getenv("WHATSAPP_PHONE_ID")
+WHATSAPP_TEMPLATE_NAME = os.getenv("WHATSAPP_TEMPLATE_NAME")
 ADMIN_PHONE = os.getenv("ADMIN_PHONE")
 BASE_URL = os.getenv("BASE_URL")
 
@@ -84,12 +85,11 @@ def send_video_review_notification(db: Session, video: Video):
                 f"(status={check.status_code})"
             )
 
-    except Exception as e:
+    except Exception:
 
         logger.error(
-            "❌ Video URL validation failed | video_id=%s | url=%s",
+            "Video URL validation failed | video_id=%s",
             video.id,
-            video_url
         )
         raise
 
@@ -134,8 +134,8 @@ def send_video_review_notification(db: Session, video: Video):
         "to": ADMIN_PHONE,
         "type": "template",
         "template": {
-            "name": "video_approval",
-            "language": {"code": "en_US"},
+            "name": WHATSAPP_TEMPLATE_NAME,
+            "language": {"code": "en"},
             "components": [
                 {
                     "type": "header",
@@ -242,13 +242,11 @@ def send_video_review_notification(db: Session, video: Video):
 
         return data
 
-    except Exception as e:
-
+    except Exception as error:
         logger.error(
-            "❌ WhatsApp notification failed | video_id=%s → %s",
+            "WhatsApp notification failed | video_id=%s | exception=%s",
             video.id,
-            str(e),
-            exc_info=True
+            type(error).__name__,
         )
 
         raise

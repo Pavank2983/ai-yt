@@ -81,15 +81,24 @@ def mix_background_music(video_path: str, music_name: str):
                 "[music][voice]sidechaincompress="
                 "threshold=0.02:ratio=10:attack=10:release=300[ducked];"
                 "[voice][ducked]amix=inputs=2:duration=shortest[mixed];"
-                "[mixed]loudnorm=I=-14:TP=-1.5:LRA=11[a]"
+                "[mixed]loudnorm=I=-14:TP=-1.5:LRA=11:linear=true[a]"
             ),
 
             "-map", "0:v",
             "-map", "[a]",
             "-shortest",
+            # ------------------------------------------------------------
+            # 🎬 VIDEO (DO NOT TOUCH — CRITICAL)
+            # ------------------------------------------------------------
             "-c:v", "copy",
+
+            # ------------------------------------------------------------
+            # 🔊 AUDIO (HIGH QUALITY + STABLE)
+            # ------------------------------------------------------------
             "-c:a", "aac",
             "-b:a", "192k",
+            "-ar", "48000",          # 🔥 IMPORTANT (YouTube standard)
+            "-ac", "2",              # stereo
             output_path
         ]
 
@@ -110,15 +119,24 @@ def mix_background_music(video_path: str, music_name: str):
             "-filter_complex",
             (
                 "[1:a]volume=0.12,afade=t=in:ss=0:d=2,"
-                "loudnorm=I=-16:TP=-1.5:LRA=11[a]"
+                "loudnorm=I=-16:TP=-1.5:LRA=11:linear=true[a]"
             ),
 
             "-map", "0:v",
             "-map", "[a]",
             "-shortest",
+            # ------------------------------------------------------------
+            # 🎬 VIDEO (DO NOT TOUCH — CRITICAL)
+            # ------------------------------------------------------------
             "-c:v", "copy",
+
+            # ------------------------------------------------------------
+            # 🔊 AUDIO (HIGH QUALITY + STABLE)
+            # ------------------------------------------------------------
             "-c:a", "aac",
             "-b:a", "192k",
+            "-ar", "48000",          # 🔥 IMPORTANT (YouTube standard)
+            "-ac", "2",              # stereo
             output_path
         ]
 

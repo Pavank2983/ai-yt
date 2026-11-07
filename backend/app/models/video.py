@@ -62,6 +62,8 @@ class Video(Base):
             "rendering",
             "ready_for_review",
             "uploaded",
+            "publishing",
+            "published",
             "failed",
             name="video_status"
         ),

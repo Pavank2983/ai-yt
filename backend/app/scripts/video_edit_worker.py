@@ -72,6 +72,8 @@ def normalize_audio(input_path: str, output_path: str):
         # SAFETY: allow videos without audio
         "-filter:a", "loudnorm",
         "-c:v", "copy",
+        "-c:a", "aac",
+        "-b:a", "192k",
         "-map", "0:v",
         "-map", "0:a?",
 
@@ -355,6 +357,8 @@ def run_video_edit_job(job_id: int, db):
 
                     logger.info("📝 SRT generated | %s", subtitle_file)
 
+                    video.voice_file_url = subtitle_file.replace("\\", "/")
+
                     if CAPTION_STYLE == "auto":
                         style = choose_caption_style(category_name)
 
@@ -391,6 +395,47 @@ def run_video_edit_job(job_id: int, db):
                         edited_video = edited_video.replace("\\", "/")
 
                     logger.info("🎞 Video after subtitles | %s", edited_video)
+
+                    # ------------------------------------------------
+                    # 🎯 FINAL HIGH QUALITY ENCODE (CRITICAL FIX)
+                    # ------------------------------------------------
+                    try:
+                        final_output = edited_video.replace(".mp4", "_final.mp4")
+
+                        logger.info("🚀 Running final high-quality encode → %s", final_output)
+
+                        subprocess.check_call([
+                            "ffmpeg", "-y",
+                            "-i", edited_video,
+
+                            "-c:v", "libx264",
+                            "-preset", "slow",
+                            "-crf", "17",
+
+                            "-profile:v", "high",
+                            "-level", "4.2",
+                            "-pix_fmt", "yuv420p",
+
+                            "-b:v", "8M",
+                            "-maxrate", "10M",
+                            "-bufsize", "16M",
+
+                            "-c:a", "aac",
+                            "-b:a", "192k",
+
+                            "-movflags", "+faststart",
+
+                            final_output
+                        ])
+
+                        if os.path.exists(final_output):
+                            edited_video = final_output
+                            logger.info("✅ Final encode complete | %s", edited_video)
+                        else:
+                            raise RuntimeError("Final encode output missing")
+
+                    except Exception as e:
+                        logger.warning("⚠ Final encode failed → using previous video | %s", str(e))
 
                 except Exception as e:
 
